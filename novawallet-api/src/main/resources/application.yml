@@ -26,6 +26,22 @@ management:
           - health
           - info
 
+  info:
+    env:
+      enabled: true
+
+
+info:
+  app:
+    name: NovaWallet API
+    description: Digital wallet backend system
+    version: 0.0.1
+
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{requestId}] %-5level %logger{36} - %msg%n"
+
 
 springdoc:
   swagger-ui:
