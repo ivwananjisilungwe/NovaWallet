@@ -1,4 +1,4 @@
-package com.novawallet.novawallet_api.dto;
+package com.novawallet.novawallet_api.common.dto;
 
 import java.time.LocalDateTime;
 
@@ -9,7 +9,7 @@ public record ApiResponse<T>(
         LocalDateTime timestamp
 ) {
 
-    public static <T> ApiResponse<T> success(T data, String message){
+    public static <T> ApiResponse<T> success(T data, String message) {
         return new ApiResponse<>(
                 true,
                 data,
@@ -18,8 +18,7 @@ public record ApiResponse<T>(
         );
     }
 
-
-    public static <T> ApiResponse<T> error(String message){
+    public static <T> ApiResponse<T> error(String message) {
         return new ApiResponse<>(
                 false,
                 null,

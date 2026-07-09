@@ -158,7 +158,7 @@
 		</dependency>
 
 
-		<!-- H2 for tests only -->
+		<!-- H2 In-Memory Database for Integration Tests -->
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>

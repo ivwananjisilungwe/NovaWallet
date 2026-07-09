@@ -1,75 +1,65 @@
 package com.novawallet.novawallet_api.config;
 
+import com.novawallet.novawallet_api.security.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
+    private final JwtAuthFilter jwtAuthFilter;
+
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+        this.jwtAuthFilter = jwtAuthFilter;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
-
-                // REST API does not use browser sessions
                 .csrf(csrf -> csrf.disable())
-
-
-                // Security headers
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
                 .headers(headers -> headers
-
-                        // Prevent clickjacking attacks
                         .frameOptions(frame -> frame.sameOrigin())
-
-                        // Prevent MIME sniffing
                         .contentTypeOptions(contentType -> {})
-
-                        // Force HTTPS in production
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
                                 .maxAgeInSeconds(31536000)
                         )
                 )
-
-
-                // Phase 0:
-                // Everything public
-                // JWT will replace this later
                 .authorizeHttpRequests(auth -> auth
-
                         .requestMatchers(
-                                "/actuator/**"
+                                "/v1/auth/register",
+                                "/v1/auth/login",
+                                "/v1/auth/verify",
+                                "/v1/auth/forgot-password",
+                                "/v1/auth/reset-password",
+                                "/v1/auth/refresh"
                         ).permitAll()
-
-                        .anyRequest().permitAll()
+                        .requestMatchers(
+                                "/swagger-ui/**",
+                                "/api-docs/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/info"
+                        ).permitAll()
+                        .anyRequest().authenticated()
                 )
-
-
-                // Disable default login page
                 .formLogin(form -> form.disable())
-
-                // Disable browser basic authentication popup
-                .httpBasic(basic -> basic.disable());
-
+                .httpBasic(basic -> basic.disable())
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
-
-    // Phase 0 placeholder
-    // Real database user authentication comes later
-    @Bean
-    public UserDetailsService userDetailsService() {
-
-        return username -> {
-            throw new UsernameNotFoundException(
-                    "Users are not implemented yet"
-            );
-        };
-    }
-
 }

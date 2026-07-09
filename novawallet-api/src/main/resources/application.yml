@@ -38,6 +38,11 @@ info:
     version: 0.0.1
 
 
+jwt:
+  secret: ${JWT_SECRET:ZGV2LXNlY3JldC1rZXktdGhhdC1pcy1hdC1sZWFzdC0yNTYtYml0cy1sb25nLWZvci1oczI1Ng==}
+  expiration: ${JWT_EXPIRATION:900000}
+
+
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%X{requestId}] %-5level %logger{36} - %msg%n"
