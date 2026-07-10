@@ -103,7 +103,7 @@ class TransactionFlowIntegrationTest {
                     {"amount": 100.00, "description": "Cash deposit"}
                     """;
 
-            MvcResult depositResult = mockMvc.perform(post("/api/v1/wallets/" + user1WalletId + "/deposit")
+            MvcResult depositResult = mockMvc.perform(post("/v1/wallets/" + user1WalletId + "/deposit")
                             .header("Authorization", "Bearer " + user1Token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(depositJson))
@@ -120,7 +120,7 @@ class TransactionFlowIntegrationTest {
             // =========================================
             // 2. CHECK BALANCE
             // =========================================
-            MvcResult balanceResult = mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/balance")
+            MvcResult balanceResult = mockMvc.perform(get("/v1/wallets/" + user1WalletId + "/balance")
                             .header("Authorization", "Bearer " + user1Token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.success").value(true))
@@ -131,7 +131,7 @@ class TransactionFlowIntegrationTest {
             // =========================================
             // 3. TRANSACTION HISTORY (should have 1 deposit)
             // =========================================
-            MvcResult historyResult = mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/transactions")
+            MvcResult historyResult = mockMvc.perform(get("/v1/wallets/" + user1WalletId + "/transactions")
                             .header("Authorization", "Bearer " + user1Token)
                             .param("type", "DEPOSIT"))
                     .andExpect(status().isOk())
@@ -143,7 +143,7 @@ class TransactionFlowIntegrationTest {
             // =========================================
             // 4. SINGLE TRANSACTION LOOKUP
             // =========================================
-            mockMvc.perform(get("/api/v1/transactions/" + depositRef)
+            mockMvc.perform(get("/v1/transactions/" + depositRef)
                             .header("Authorization", "Bearer " + user1Token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.reference").value(depositRef))
@@ -168,7 +168,7 @@ class TransactionFlowIntegrationTest {
                     {"amount": 30.00, "pin": "1234", "description": "ATM withdrawal"}
                     """;
 
-            mockMvc.perform(post("/api/v1/wallets/" + user1WalletId + "/withdraw")
+            mockMvc.perform(post("/v1/wallets/" + user1WalletId + "/withdraw")
                             .header("Authorization", "Bearer " + user1Token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(withdrawJson))
@@ -184,7 +184,7 @@ class TransactionFlowIntegrationTest {
                     {"receiverWalletId": "%s", "amount": 20.00, "pin": "1234", "description": "Payment"}
                     """.formatted(user2WalletId.toString());
 
-            MvcResult transferResult = mockMvc.perform(post("/api/v1/transfers")
+            MvcResult transferResult = mockMvc.perform(post("/v1/transfers")
                             .header("Authorization", "Bearer " + user1Token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(transferJson))
@@ -198,7 +198,7 @@ class TransactionFlowIntegrationTest {
             // =========================================
             // user1: 100 - 30 - 20 = 50
             ApiResponse<WalletResponse> user1FinalBalance = objectMapper.readValue(
-                    mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/balance")
+                    mockMvc.perform(get("/v1/wallets/" + user1WalletId + "/balance")
                                     .header("Authorization", "Bearer " + user1Token))
                             .andExpect(status().isOk())
                             .andReturn().getResponse().getContentAsString(),
@@ -209,7 +209,7 @@ class TransactionFlowIntegrationTest {
 
             // user2: 0 + 20 = 20
             ApiResponse<WalletResponse> user2FinalBalance = objectMapper.readValue(
-                    mockMvc.perform(get("/api/v1/wallets/" + user2WalletId + "/balance")
+                    mockMvc.perform(get("/v1/wallets/" + user2WalletId + "/balance")
                                     .header("Authorization", "Bearer " + user2Token))
                             .andExpect(status().isOk())
                             .andReturn().getResponse().getContentAsString(),
@@ -220,7 +220,7 @@ class TransactionFlowIntegrationTest {
             // =========================================
             // 9. HISTORY FILTERING — user1 has 3 transactions
             // =========================================
-            String allHistory = mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/transactions")
+            String allHistory = mockMvc.perform(get("/v1/wallets/" + user1WalletId + "/transactions")
                             .header("Authorization", "Bearer " + user1Token))
                     .andExpect(status().isOk())
                     .andReturn().getResponse().getContentAsString();
@@ -234,11 +234,11 @@ class TransactionFlowIntegrationTest {
             // 10. OWNERSHIP ENFORCEMENT
             // =========================================
             // user2 cannot access user1's wallet
-            mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/balance")
+            mockMvc.perform(get("/v1/wallets/" + user1WalletId + "/balance")
                             .header("Authorization", "Bearer " + user2Token))
                     .andExpect(status().isForbidden());
 
-            mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/transactions")
+            mockMvc.perform(get("/v1/wallets/" + user1WalletId + "/transactions")
                             .header("Authorization", "Bearer " + user2Token))
                     .andExpect(status().isForbidden());
         }

@@ -36,5 +36,12 @@ build/
 # Documentation (not tracked)
 docs/springboot-tutorial/
 
+# Runtime uploads
+uploads/
+
+# Session backups
+session-ses_*.md
+*.bak
+
 ### VS Code ###
 .vscode/

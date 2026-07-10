@@ -30,7 +30,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping("/v1")
 @Tag(name = "Transactions", description = "Deposit, withdraw, transfer, history, and balance")
 @SecurityRequirement(name = "bearer-jwt")
 public class TransactionController {
