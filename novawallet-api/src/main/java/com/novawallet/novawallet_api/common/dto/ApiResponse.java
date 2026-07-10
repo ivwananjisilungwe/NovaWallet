@@ -1,11 +1,20 @@
 package com.novawallet.novawallet_api.common.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
+@Schema(description = "Standard API response wrapper")
 public record ApiResponse<T>(
+        @Schema(description = "Indicates if the request was successful", example = "true")
         boolean success,
+
+        @Schema(description = "Response payload")
         T data,
+
+        @Schema(description = "Response message", example = "Operation completed successfully")
         String message,
+
+        @Schema(description = "Response timestamp")
         LocalDateTime timestamp
 ) {
 

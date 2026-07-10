@@ -12,6 +12,15 @@ spring:
     serialization:
       write-dates-as-timestamps: false
 
+  # Mail is not configured in dev mode — emails are logged to console
+  # For production, set these via environment variables:
+  #   SPRING_MAIL_HOST=smtp.sendgrid.net
+  #   SPRING_MAIL_PORT=587
+  #   SPRING_MAIL_USERNAME=apikey
+  #   SPRING_MAIL_PASSWORD=<sendgrid-api-key>
+  #   spring.mail.properties.mail.smtp.auth=true
+  #   spring.mail.properties.mail.smtp.starttls.enable=true
+
 
 server:
   servlet:
@@ -42,6 +51,51 @@ jwt:
   secret: ${JWT_SECRET:ZGV2LXNlY3JldC1rZXktdGhhdC1pcy1hdC1sZWFzdC0yNTYtYml0cy1sb25nLWZvci1oczI1Ng==}
   expiration: ${JWT_EXPIRATION:900000}
 
+
+app:
+  admin:
+    first-name: ${APP_ADMIN_FIRST_NAME:Admin}
+    last-name: ${APP_ADMIN_LAST_NAME:User}
+    email: ${APP_ADMIN_EMAIL:admin@novawallet.com}
+    password: ${APP_ADMIN_PASSWORD:Admin@123}
+    phone: ${APP_ADMIN_PHONE:+260000000000}
+
+  mail:
+    from: ${APP_MAIL_FROM:noreply@novawallet.com}
+
+  rate-limit:
+    login:
+      max-attempts: 5
+      lockout-minutes: 15
+    global:
+      max-requests: 100
+      auth-max-requests: 10
+      window-seconds: 60
+
+  kyc:
+    upload-dir: uploads/kyc
+    tiers:
+      1:
+        name: Basic
+        wallet-limit: 5000
+        daily-send-limit: 2000
+        required-documents:
+          - NATIONAL_ID
+      2:
+        name: Standard
+        wallet-limit: 50000
+        daily-send-limit: 20000
+        required-documents:
+          - NATIONAL_ID
+          - SELFIE
+      3:
+        name: Advanced
+        wallet-limit: 200000
+        daily-send-limit: 100000
+        required-documents:
+          - NATIONAL_ID
+          - SELFIE
+          - PROOF_OF_ADDRESS
 
 logging:
   pattern:

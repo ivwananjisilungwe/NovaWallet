@@ -30,7 +30,7 @@ class AuthControllerIntegrationTest {
                 "John", "Doe",
                 "john.integration@example.com",
                 "+260971234567",
-                "SecurePass123"
+                "SecurePass@123"
         );
 
         mockMvc.perform(post("/v1/auth/register")
@@ -52,7 +52,7 @@ class AuthControllerIntegrationTest {
                 "Jane", "Doe",
                 "jane.dup@example.com",
                 "+260971234568",
-                "SecurePass123"
+                "SecurePass@123"
         );
 
         // First registration
@@ -90,7 +90,7 @@ class AuthControllerIntegrationTest {
                 "Login", "Test",
                 "login.test@example.com",
                 "+260971234569",
-                "SecurePass123"
+                "SecurePass@123"
         );
 
         mockMvc.perform(post("/v1/auth/register")
@@ -102,7 +102,7 @@ class AuthControllerIntegrationTest {
         String loginJson = """
                 {
                     "email": "login.test@example.com",
-                    "password": "SecurePass123"
+                    "password": "SecurePass@123"
                 }
                 """;
 

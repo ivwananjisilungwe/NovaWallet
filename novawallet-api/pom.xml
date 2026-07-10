@@ -97,6 +97,13 @@
 		</dependency>
 
 
+		<!-- Spring AOP / Aspect Oriented Programming -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aop</artifactId>
+		</dependency>
+
+
 		<!-- Email Notifications -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

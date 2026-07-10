@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.user.entity;
 
+import com.novawallet.novawallet_api.kyc.enums.KycStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLRestriction;
@@ -67,6 +68,34 @@ public class User {
 
     @Column(name = "password_reset_expires_at")
     private LocalDateTime passwordResetExpiresAt;
+
+    // ==================== KYC fields ====================
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kyc_status", length = 20)
+    @Builder.Default
+    private KycStatus kycStatus = KycStatus.NOT_SUBMITTED;
+
+    @Column(name = "kyc_tier")
+    @Builder.Default
+    private int kycTier = 0;
+
+    @Column(name = "kyc_submitted_at")
+    private LocalDateTime kycSubmittedAt;
+
+    @Column(name = "kyc_approved_at")
+    private LocalDateTime kycApprovedAt;
+
+    @Column(name = "kyc_rejected_at")
+    private LocalDateTime kycRejectedAt;
+
+    @Column(name = "kyc_rejection_reason", length = 500)
+    private String kycRejectionReason;
+
+    @Column(name = "kyc_approved_by")
+    private UUID kycApprovedBy;
+
+    // ==================== Soft delete ====================
 
     @Column(nullable = false)
     @Builder.Default

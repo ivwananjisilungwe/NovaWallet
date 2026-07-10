@@ -1,29 +1,51 @@
 package com.novawallet.novawallet_api.auth.controller;
 
-import com.novawallet.novawallet_api.auth.dto.request.*;
+import com.novawallet.novawallet_api.auth.dto.request.LoginRequest;
+import com.novawallet.novawallet_api.auth.dto.request.RegisterRequest;
 import com.novawallet.novawallet_api.auth.dto.response.AuthResponse;
 import com.novawallet.novawallet_api.auth.service.AuthService;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
+import com.novawallet.novawallet_api.exception.RateLimitException;
 import com.novawallet.novawallet_api.exception.UnauthorizedException;
+import com.novawallet.novawallet_api.security.LoginRateLimiter;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/v1/auth")
+@Tag(name = "Authentication", description = "User authentication endpoints — register, login, and token refresh")
 public class AuthController {
 
     private final AuthService authService;
+    private final LoginRateLimiter loginRateLimiter;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, LoginRateLimiter loginRateLimiter) {
         this.authService = authService;
+        this.loginRateLimiter = loginRateLimiter;
     }
 
+    @Operation(
+            summary = "Register a new user",
+            description = "Creates a new user account with a wallet. Returns JWT tokens for immediate use."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "201", description = "Account created successfully",
+                    content = @Content(schema = @Schema(implementation = AuthResponse.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "Invalid input or email already exists",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))
+            )
+    })
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
             @Valid @RequestBody RegisterRequest request
@@ -34,63 +56,58 @@ public class AuthController {
                 .body(ApiResponse.success(response, "Registration successful"));
     }
 
+    @Operation(
+            summary = "Authenticate user",
+            description = "Authenticates with email and password. Returns JWT access token and refresh token. Rate-limited to 5 failed attempts per 15 minutes."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "Login successful",
+                    content = @Content(schema = @Schema(implementation = AuthResponse.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "Invalid email or password",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "429", description = "Too many failed attempts — account temporarily locked"
+            )
+    })
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(
-            @Valid @RequestBody LoginRequest request
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest
     ) {
-        AuthResponse response = authService.login(request);
-        return ResponseEntity.ok(ApiResponse.success(response, "Login successful"));
+        if (loginRateLimiter.isLocked(request.email(), httpRequest)) {
+            throw new RateLimitException("Account temporarily locked due to too many failed attempts. Try again in 15 minutes.");
+        }
+
+        try {
+            AuthResponse response = authService.login(request);
+            loginRateLimiter.recordSuccessfulAttempt(request.email(), httpRequest);
+            return ResponseEntity.ok(ApiResponse.success(response, "Login successful"));
+        } catch (UnauthorizedException e) {
+            loginRateLimiter.recordFailedAttempt(request.email(), httpRequest);
+            throw e;
+        }
     }
 
-    @PostMapping("/pin")
-    public ResponseEntity<ApiResponse<Void>> setPin(
-            @Valid @RequestBody SetPinRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        UUID userId = extractUserId(userDetails);
-        authService.setPin(userId, request.pin());
-        return ResponseEntity.ok(ApiResponse.success(null, "PIN set successfully"));
-    }
-
-    @PostMapping("/pin/verify")
-    public ResponseEntity<ApiResponse<Void>> verifyPin(
-            @Valid @RequestBody SetPinRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        UUID userId = extractUserId(userDetails);
-        authService.verifyPin(userId, request.pin());
-        return ResponseEntity.ok(ApiResponse.success(null, "PIN verified successfully"));
-    }
-
-    @GetMapping("/verify")
-    public ResponseEntity<ApiResponse<Void>> verifyEmail(
-            @RequestParam("token") String token
-    ) {
-        authService.verifyEmail(token);
-        return ResponseEntity.ok(ApiResponse.success(null, "Email verified successfully"));
-    }
-
-    @PostMapping("/forgot-password")
-    public ResponseEntity<ApiResponse<Void>> forgotPassword(
-            @Valid @RequestBody ForgotPasswordRequest request
-    ) {
-        authService.forgotPassword(request);
-        return ResponseEntity.ok(
-                ApiResponse.success(null, "If the email exists, a reset link has been sent")
-        );
-    }
-
-    @PostMapping("/reset-password")
-    public ResponseEntity<ApiResponse<Void>> resetPassword(
-            @Valid @RequestBody ResetPasswordRequest request
-    ) {
-        authService.resetPassword(request);
-        return ResponseEntity.ok(ApiResponse.success(null, "Password reset successful"));
-    }
-
+    @Operation(
+            summary = "Refresh access token",
+            description = "Exchanges a valid refresh token for a new access token and a rotated refresh token."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "Token refreshed successfully",
+                    content = @Content(schema = @Schema(implementation = AuthResponse.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "Invalid or expired refresh token"
+            )
+    })
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(
-            @RequestHeader("Authorization") String authHeader
+            @RequestHeader("Authorization") @io.swagger.v3.oas.annotations.Parameter(description = "Bearer refresh token", required = true, example = "Bearer eyJhbGciOiJIUzI1NiJ9...") String authHeader
     ) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new UnauthorizedException("Missing or invalid Authorization header");
@@ -98,18 +115,5 @@ public class AuthController {
         String refreshToken = authHeader.substring(7);
         AuthResponse response = authService.refreshAccessToken(refreshToken);
         return ResponseEntity.ok(ApiResponse.success(response, "Token refreshed"));
-    }
-
-    @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        UUID userId = extractUserId(userDetails);
-        authService.logout(userId);
-        return ResponseEntity.ok(ApiResponse.success(null, "Logged out successfully"));
-    }
-
-    private UUID extractUserId(UserDetails userDetails) {
-        return UUID.fromString(userDetails.getUsername());
     }
 }

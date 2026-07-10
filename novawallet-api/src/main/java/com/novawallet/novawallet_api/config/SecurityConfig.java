@@ -3,6 +3,7 @@ package com.novawallet.novawallet_api.config;
 import com.novawallet.novawallet_api.security.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -41,10 +42,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/v1/auth/register",
                                 "/v1/auth/login",
-                                "/v1/auth/verify",
-                                "/v1/auth/forgot-password",
-                                "/v1/auth/reset-password",
-                                "/v1/auth/refresh"
+                                "/v1/auth/refresh",
+                                "/v1/password/forgot",
+                                "/v1/password/reset",
+                                "/v1/email/verify"
                         ).permitAll()
                         .requestMatchers(
                                 "/swagger-ui/**",

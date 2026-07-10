@@ -6,14 +6,13 @@ import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.DuplicateResourceException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.exception.UnauthorizedException;
+import com.novawallet.novawallet_api.notification.MailService;
 import com.novawallet.novawallet_api.security.JwtUtil;
 import com.novawallet.novawallet_api.token.entity.RefreshToken;
 import com.novawallet.novawallet_api.token.service.TokenService;
 import com.novawallet.novawallet_api.user.entity.User;
 import com.novawallet.novawallet_api.user.repository.UserRepository;
-import com.novawallet.novawallet_api.wallet.entity.Wallet;
-import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
-import com.novawallet.novawallet_api.wallet.service.AccountNumberGenerator;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,26 +33,23 @@ public class AuthService {
     private static final int PASSWORD_RESET_HOURS = 1;
 
     private final UserRepository userRepository;
-    private final WalletRepository walletRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final AccountNumberGenerator accountNumberGenerator;
     private final TokenService tokenService;
+    private final MailService mailService;
 
     public AuthService(
             UserRepository userRepository,
-            WalletRepository walletRepository,
             PasswordEncoder passwordEncoder,
             JwtUtil jwtUtil,
-            AccountNumberGenerator accountNumberGenerator,
-            TokenService tokenService
+            TokenService tokenService,
+            MailService mailService
     ) {
         this.userRepository = userRepository;
-        this.walletRepository = walletRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
-        this.accountNumberGenerator = accountNumberGenerator;
         this.tokenService = tokenService;
+        this.mailService = mailService;
     }
 
     // ==================== Register ====================
@@ -77,15 +73,9 @@ public class AuthService {
 
         user = userRepository.save(user);
 
-        Wallet wallet = Wallet.builder()
-                .userId(user.getId())
-                .accountNumber(accountNumberGenerator.generate())
-                .build();
-
-        walletRepository.save(wallet);
-
         log.info("User registered: {} (id={})", user.getEmail(), user.getId());
-        log.info("Wallet created: {} for user {}", wallet.getAccountNumber(), user.getId());
+
+        mailService.sendVerificationEmail(user.getEmail(), user.getFirstName(), user.getVerificationToken());
 
         String refreshToken = tokenService.createRefreshToken(user);
 
@@ -186,6 +176,7 @@ public class AuthService {
                     user.setPasswordResetExpiresAt(LocalDateTime.now().plusHours(PASSWORD_RESET_HOURS));
                     userRepository.save(user);
 
+                    mailService.sendPasswordResetEmail(user.getEmail(), user.getFirstName(), user.getPasswordResetToken());
                     log.info("Password reset token generated for user: {}", user.getEmail());
                 });
     }

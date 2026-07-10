@@ -5,6 +5,7 @@ import com.novawallet.novawallet_api.auth.dto.response.AuthResponse;
 import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.DuplicateResourceException;
 import com.novawallet.novawallet_api.exception.UnauthorizedException;
+import com.novawallet.novawallet_api.notification.MailService;
 import com.novawallet.novawallet_api.security.JwtUtil;
 import com.novawallet.novawallet_api.token.entity.RefreshToken;
 import com.novawallet.novawallet_api.token.repository.RefreshTokenRepository;
@@ -12,9 +13,7 @@ import com.novawallet.novawallet_api.token.service.TokenService;
 import com.novawallet.novawallet_api.user.entity.Role;
 import com.novawallet.novawallet_api.user.entity.User;
 import com.novawallet.novawallet_api.user.repository.UserRepository;
-import com.novawallet.novawallet_api.wallet.entity.Wallet;
-import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
-import com.novawallet.novawallet_api.wallet.service.AccountNumberGenerator;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -42,31 +41,24 @@ class AuthServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private WalletRepository walletRepository;
-    @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
     private JwtUtil jwtUtil;
+    @Mock
+    private MailService mailService;
 
     private PasswordEncoder passwordEncoder;
-    private AccountNumberGenerator accountNumberGenerator;
     private TokenService tokenService;
     private AuthService authService;
 
     @Captor
     private ArgumentCaptor<User> userCaptor;
     @Captor
-    private ArgumentCaptor<Wallet> walletCaptor;
-    @Captor
     private ArgumentCaptor<RefreshToken> refreshTokenCaptor;
 
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-
-        WalletRepository walletRepo = mock(WalletRepository.class);
-        when(walletRepo.existsByAccountNumber(any())).thenReturn(false);
-        accountNumberGenerator = new AccountNumberGenerator(walletRepo);
 
         // Manual inject for TokenService
         tokenService = new TokenService(refreshTokenRepository);
@@ -75,11 +67,10 @@ class AuthServiceTest {
 
         authService = new AuthService(
                 userRepository,
-                walletRepository,
                 passwordEncoder,
                 jwtUtil,
-                accountNumberGenerator,
-                tokenService
+                tokenService,
+                mailService
         );
 
         when(jwtUtil.generateToken(any(), any(), any())).thenReturn("test-access-token");
@@ -95,7 +86,7 @@ class AuthServiceTest {
         void shouldRegisterUserSuccessfully() {
             RegisterRequest request = new RegisterRequest(
                     "John", "Doe", "john@example.com",
-                    "+260971234567", "SecurePass123"
+                    "+260971234567", "SecurePass@123"
             );
 
             when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
@@ -107,19 +98,12 @@ class AuthServiceTest {
                     .lastName("Doe")
                     .email("john@example.com")
                     .phone("+260971234567")
-                    .passwordHash(passwordEncoder.encode("SecurePass123"))
+                    .passwordHash(passwordEncoder.encode("SecurePass@123"))
                     .role(Role.USER)
                     .verificationToken("some-token")
                     .build();
 
             when(userRepository.save(any(User.class))).thenReturn(savedUser);
-            when(walletRepository.save(any(Wallet.class))).thenReturn(
-                    Wallet.builder()
-                            .id(UUID.randomUUID())
-                            .userId(savedUser.getId())
-                            .accountNumber("NW0000000001")
-                            .build()
-            );
 
             doReturn("test-refresh-token").when(tokenService).createRefreshToken(any(User.class));
 
@@ -132,20 +116,15 @@ class AuthServiceTest {
 
             verify(userRepository).save(userCaptor.capture());
             User capturedUser = userCaptor.getValue();
-            assertThat(capturedUser.getPasswordHash()).isNotEqualTo("SecurePass123");
+            assertThat(capturedUser.getPasswordHash()).isNotEqualTo("SecurePass@123");
             assertThat(capturedUser.getVerificationToken()).isNotBlank();
-
-            verify(walletRepository).save(walletCaptor.capture());
-            Wallet capturedWallet = walletCaptor.getValue();
-            assertThat(capturedWallet.getUserId()).isEqualTo(savedUser.getId());
-            assertThat(capturedWallet.getAccountNumber()).isNotBlank();
         }
 
         @Test
         void shouldThrowWhenEmailAlreadyExists() {
             RegisterRequest request = new RegisterRequest(
                     "John", "Doe", "existing@example.com",
-                    "+260971234567", "SecurePass123"
+                    "+260971234567", "SecurePass@123"
             );
 
             when(userRepository.existsByEmail("existing@example.com")).thenReturn(true);
@@ -159,7 +138,7 @@ class AuthServiceTest {
         void shouldThrowWhenPhoneAlreadyExists() {
             RegisterRequest request = new RegisterRequest(
                     "John", "Doe", "john@example.com",
-                    "+260971234567", "SecurePass123"
+                    "+260971234567", "SecurePass@123"
             );
 
             when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
@@ -178,7 +157,7 @@ class AuthServiceTest {
 
         @Test
         void shouldLoginSuccessfully() {
-            String rawPassword = "SecurePass123";
+            String rawPassword = "SecurePass@123";
             UUID userId = UUID.randomUUID();
             User user = User.builder()
                     .id(userId)
