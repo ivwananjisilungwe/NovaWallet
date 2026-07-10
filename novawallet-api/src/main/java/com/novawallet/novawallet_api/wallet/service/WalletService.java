@@ -1,8 +1,11 @@
 package com.novawallet.novawallet_api.wallet.service;
 
+import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.wallet.dto.WalletResponse;
+import com.novawallet.novawallet_api.wallet.entity.FreezeReason;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
+import com.novawallet.novawallet_api.wallet.entity.WalletStatus;
 import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +37,36 @@ public class WalletService {
     public WalletResponse getWalletByAccountNumber(String accountNumber) {
         Wallet wallet = walletRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet not found: " + accountNumber));
+        return WalletResponse.from(wallet);
+    }
+
+    @Transactional(readOnly = true)
+    public Wallet getWalletEntity(UUID walletId) {
+        return walletRepository.findById(walletId)
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found: " + walletId));
+    }
+
+    public WalletResponse freezeWallet(UUID walletId, FreezeReason reason) {
+        Wallet wallet = getWalletEntity(walletId);
+        if (wallet.getStatus() == WalletStatus.FROZEN) {
+            throw new BadRequestException("Wallet is already frozen");
+        }
+        wallet.setStatus(WalletStatus.FROZEN);
+        wallet.setFreezeReason(reason);
+        wallet = walletRepository.save(wallet);
+        log.info("Wallet {} frozen. Reason: {}", walletId, reason);
+        return WalletResponse.from(wallet);
+    }
+
+    public WalletResponse unfreezeWallet(UUID walletId) {
+        Wallet wallet = getWalletEntity(walletId);
+        if (wallet.getStatus() != WalletStatus.FROZEN) {
+            throw new BadRequestException("Wallet is not frozen");
+        }
+        wallet.setStatus(WalletStatus.ACTIVE);
+        wallet.setFreezeReason(null);
+        wallet = walletRepository.save(wallet);
+        log.info("Wallet {} unfrozen", walletId);
         return WalletResponse.from(wallet);
     }
 }

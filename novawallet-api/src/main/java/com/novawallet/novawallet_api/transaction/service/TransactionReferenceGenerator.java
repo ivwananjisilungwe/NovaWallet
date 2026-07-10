@@ -1,11 +1,14 @@
 package com.novawallet.novawallet_api.transaction.service;
 
+import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Component
@@ -17,6 +20,29 @@ public class TransactionReferenceGenerator {
 
     private final AtomicLong counter = new AtomicLong(0);
     private volatile String currentDate;
+
+    private final TransactionRepository transactionRepository;
+
+    public TransactionReferenceGenerator(TransactionRepository transactionRepository) {
+        this.transactionRepository = transactionRepository;
+    }
+
+    @PostConstruct
+    public void initCounterFromDatabase() {
+        String today = formattedDate();
+        currentDate = today;
+        String prefix = PREFIX + today;
+        Optional<String> maxRef = transactionRepository.findMaxReferenceByPrefix(prefix + "%");
+        if (maxRef.isPresent()) {
+            String ref = maxRef.get();
+            long seq = Long.parseLong(ref.substring(prefix.length()));
+            counter.set(seq);
+            log.info("Seeded reference counter to {} from existing reference '{}'", seq, ref);
+        } else {
+            counter.set(0);
+            log.info("No existing references for today ({}), counter starts at 0", today);
+        }
+    }
 
     /**
      * Generates a unique transaction reference in the format

@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -20,4 +22,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
             UUID senderWalletId, UUID receiverWalletId, Pageable pageable);
 
     long countByReferenceStartingWith(String prefix);
+
+    @Query(value = "SELECT reference FROM transactions WHERE reference LIKE :prefix ORDER BY reference DESC LIMIT 1", nativeQuery = true)
+    Optional<String> findMaxReferenceByPrefix(@Param("prefix") String prefix);
 }

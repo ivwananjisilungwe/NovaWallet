@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.admin.controller;
 
+import com.novawallet.novawallet_api.admin.dto.FreezeWalletRequest;
 import com.novawallet.novawallet_api.admin.dto.UserSummaryResponse;
 import com.novawallet.novawallet_api.admin.service.AdminService;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
@@ -7,6 +8,8 @@ import com.novawallet.novawallet_api.kyc.dto.ApproveKycRequest;
 import com.novawallet.novawallet_api.kyc.dto.KycStatusResponse;
 import com.novawallet.novawallet_api.kyc.dto.RejectKycRequest;
 import com.novawallet.novawallet_api.kyc.service.AdminKycService;
+import com.novawallet.novawallet_api.wallet.dto.WalletResponse;
+import com.novawallet.novawallet_api.wallet.service.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -33,10 +36,12 @@ public class AdminController {
 
     private final AdminService adminService;
     private final AdminKycService adminKycService;
+    private final WalletService walletService;
 
-    public AdminController(AdminService adminService, AdminKycService adminKycService) {
+    public AdminController(AdminService adminService, AdminKycService adminKycService, WalletService walletService) {
         this.adminService = adminService;
         this.adminKycService = adminKycService;
+        this.walletService = walletService;
     }
 
     @Operation(
@@ -222,5 +227,60 @@ public class AdminController {
         UUID adminId = UUID.fromString(adminDetails.getUsername());
         adminKycService.rejectKyc(userId, request, adminId);
         return ResponseEntity.ok(ApiResponse.success(null, "KYC rejected"));
+    }
+
+    // ==================== Admin Wallet Endpoints ====================
+
+    @Operation(
+            summary = "Freeze a wallet",
+            description = "Freeze a wallet to prevent all transactions. Requires ADMIN role."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "Wallet frozen"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "Wallet already frozen"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "Forbidden"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "Wallet not found"
+            )
+    })
+    @PostMapping("/wallets/{walletId}/freeze")
+    public ResponseEntity<ApiResponse<WalletResponse>> freezeWallet(
+            @PathVariable @Parameter(description = "Wallet UUID", required = true) UUID walletId,
+            @Valid @RequestBody FreezeWalletRequest request
+    ) {
+        WalletResponse wallet = walletService.freezeWallet(walletId, request.reason());
+        return ResponseEntity.ok(ApiResponse.success(wallet, "Wallet frozen"));
+    }
+
+    @Operation(
+            summary = "Unfreeze a wallet",
+            description = "Restore a frozen wallet to active status. Requires ADMIN role."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "Wallet unfrozen"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "Wallet is not frozen"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "Forbidden"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "Wallet not found"
+            )
+    })
+    @PostMapping("/wallets/{walletId}/unfreeze")
+    public ResponseEntity<ApiResponse<WalletResponse>> unfreezeWallet(
+            @PathVariable @Parameter(description = "Wallet UUID", required = true) UUID walletId
+    ) {
+        WalletResponse wallet = walletService.unfreezeWallet(walletId);
+        return ResponseEntity.ok(ApiResponse.success(wallet, "Wallet unfrozen"));
     }
 }
