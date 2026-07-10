@@ -204,7 +204,8 @@ class TransactionFlowIntegrationTest {
                             .andReturn().getResponse().getContentAsString(),
                     new TypeReference<>() {}
             );
-            assertThat(user1FinalBalance.data().balance()).isEqualByComparingTo("50.00");
+            // 100 - 30 - 0.50(withdrawal fee) - 20 - 1.00(transfer fee) = 48.50
+            assertThat(user1FinalBalance.data().balance()).isEqualByComparingTo("48.50");
 
             // user2: 0 + 20 = 20
             ApiResponse<WalletResponse> user2FinalBalance = objectMapper.readValue(
@@ -226,8 +227,8 @@ class TransactionFlowIntegrationTest {
 
             ApiResponse<PagedResponse<TransactionResponse>> historyResponse = objectMapper.readValue(
                     allHistory, new TypeReference<>() {});
-            // deposit + withdraw + transfer_debit + transfer_credit = 4
-            assertThat(historyResponse.data().totalElements()).isEqualTo(4);
+            // deposit + withdraw + fee(1) + transfer_debit + transfer_credit + fee(2) = 6
+            assertThat(historyResponse.data().totalElements()).isEqualTo(6);
 
             // =========================================
             // 10. OWNERSHIP ENFORCEMENT

@@ -1,702 +1,833 @@
 # Learn Spring Boot — From This Project
 
-**Author**: Senior Java Engineer  
-**Project**: NovaWallet API
-
-This guide teaches Spring Boot from the ground up using the NovaWallet API codebase. Every concept links to a real file in this project — you learn by reading real production code, not toy examples.
+> **A senior engineer walks you through the codebase. No fluff. Just what you need to know.**
 
 ---
 
-## Chapter 1: What Is Spring Boot?
+## Part 1: The Wide View
 
-### The Problem Spring Boot Solves
-
-Imagine building a Java application from scratch. You'd need to:
-
-- Set up a web server (Tomcat, Jetty...)
-- Configure a database connection
-- Create a system for receiving HTTP requests
-- Build a way to convert JSON to Java objects and back
-- Handle security, logging, error handling
-- Manage thousands of objects and their dependencies
-
-That's months of work.
-
-**Spring Boot is a pre-built engine** that does all of this for you. You just write the business logic — the engine handles the plumbing.
-
-### What Happens When You Run This Project
-
-Execute `./mvnw spring-boot:run` and Spring Boot does this, IN ORDER:
-
-```
-1. Reads application.yml          ← learns database URL, port, JWT secret, etc.
-2. Starts embedded Tomcat server  ← listens on port 8080
-3. Scans all @Configuration       ← finds SecurityConfig, PasswordConfig, etc.
-4. Creates all @Service beans     ← creates ONE instance of AuthService, etc.
-5. Creates all @Repository beans  ← creates proxy for UserRepository
-6. Sets up JPA/Hibernate          ← connects to PostgreSQL
-7. Runs Flyway migrations         ← executes V1__.sql, V2__.sql, etc.
-8. Starts the Security filter chain ← installs JwtAuthFilter
-9. Registers all @RestController  ← maps /v1/auth/register to AuthController.register()
-10. Ready to accept requests      ← Tomcat logs "Started NovawalletApiApplication"
-```
-
-**Key insight**: You never wrote code for steps 1-9. Spring Boot does it all automatically based on annotations and configuration files. You only wrote files in the `com.novawallet.novawallet_api/` package.
+Before we touch a single file, you need the mental map. Without it, every file looks like random code. With it, you'll see patterns everywhere.
 
 ---
 
-## Chapter 2: The Big Picture — Request/Response Flow
+### Chapter 1: What Spring Boot Actually Is
 
-Here's what happens when a mobile app sends a request to `POST /v1/auth/register`:
+**Forget what the tutorials say. Here's the truth:**
+
+Spring Boot is a **pre-built application engine**. You provide the business logic. It provides everything else.
+
+Think of it like buying a restaurant vs building one from scratch:
+
+| Building from scratch (plain Java) | Using Spring Boot |
+|---|---|
+| Build the building | Find a ready-made restaurant space |
+| Install the kitchen | Kitchen is already there |
+| Hire the staff | Staff is already trained |
+| Set up the menu system | Menu system is ready to use |
+| Open for business | **You just cook the food** |
+
+**What Spring Boot gives you for free:**
+
+- **A web server** (Tomcat) — listens for HTTP requests
+- **JSON converter** (Jackson) — turns Java objects into JSON and back
+- **Database connector** (JPA/Hibernate) — talks to PostgreSQL for you
+- **Security system** (Spring Security) — handles authentication and authorization
+- **Validation engine** — checks that input data is correct
+- **Error handler** — catches and formats errors consistently
+- **Testing framework** — makes it easy to test everything
+
+**Your job is only:**
+1. Create the database tables (migrations)
+2. Write the business logic (services)
+3. Define the API endpoints (controllers)
+4. Set up the configuration (application.yml)
+
+**This is why Spring Boot became the standard for Java web apps.** You go from idea to working API in days, not months.
+
+---
+
+### Chapter 2: The Project Map — Where Everything Lives
+
+Let me walk you through the folder structure like I'm showing you around a new office.
 
 ```
-MOBILE APP
-    |
-    | HTTP POST /v1/auth/register  { "email": "...", "password": "..." }
-    v
-1.  TOMCAT (embedded web server)
-    - Receives raw TCP connection
-    - Parses HTTP request (method, path, headers, body)
-    |
-    v
-2.  SPRING SECURITY FILTER CHAIN  [SecurityConfig.java]
-    - Each filter checks something:
-      a. CorsFilter           → allows/restricts cross-origin requests
-      b. JwtAuthFilter        → extracts Bearer token (for protected endpoints)
-      c. ExceptionFilter      → catches security errors
-    - This endpoint is PUBLIC (no JWT needed), so filter chain passes through
-    |
-    v
-3.  DISPATCHER SERVLET  (Spring MVC core)
-    - Looks at the path: "/v1/auth/register"
-    - Asks: "Who handles this?"
-    - Finds: AuthController.register()  [because @PostMapping("/register")]
-    - Note: The base @RequestMapping("/v1/auth") on the class + "/register" = "/v1/auth/register"
-    |
-    v
-4.  AUTH CONTROLLER  [AuthController.java]
-    - Receives the request
-    - Sees @Valid @RequestBody RegisterRequest request
-    - Spring automatically:
-      a. Reads the JSON body from the HTTP request
-      b. Converts it to a RegisterRequest Java object (JSON → Java)
-      c. Runs validation (checking @NotBlank, @Email, @Size)
-      d. If validation fails → returns 400 Bad Request
-    - If valid → calls authService.register(request)
-    |
-    v
-5.  AUTH SERVICE  [AuthService.java]
-    - Contains the business logic rules:
-      a. "Is this email already taken?" → check database
-      b. "Is this phone already taken?" → check database
-      c. Hash the password with BCrypt
-      d. Create User object
-      e. Save User to database
-      f. Generate wallet for user
-      g. Create refresh token
-      h. Generate JWT access token
-      i. Return AuthResponse
-    - @Transactional means: if anything fails, ALL database changes roll back
-    |
-    v
-6.  USER / WALLET REPOSITORY  [UserRepository.java / WalletRepository.java]
-    - Spring Data JPA translates method names into SQL:
-      - findByEmail(email) → SELECT * FROM users WHERE email = ?
-      - save(user) → INSERT INTO users (...)
-    - You NEVER write SQL — Spring generates it from method names
-    |
-    v
-7.  POSTGRESQL DATABASE
-    - Executes the SQL
-    - Returns results (or insert confirmation)
-    |
-    (Now data flows back up)
-    |
-    v
-6.  REPOSITORY returns saved User object
-5.  AUTH SERVICE builds AuthResponse, returns to Controller
-4.  AUTH CONTROLLER wraps in ApiResponse.success(), returns to DispatcherServlet
-3.  DISPATCHER SERVLET converts response to JSON (Java → JSON)
-2.  SPRING SECURITY adds response headers
-1.  TOMCAT sends HTTP response back to mobile app
-    |
-    v
-MOBILE APP receives: {"success":true,"data":{"accessToken":"...","user":{...}}}
+NovaWallet/
+├── novawallet-api/                   ← THE WHOLE APP LIVES HERE
+│   ├── pom.xml                       ← Recipe file (what ingredients to use)
+│   ├── src/main/java/com/novawallet/novawallet_api/
+│   │   ├── NovawalletApiApplication.java    ← The front door (main method)
+│   │   │
+│   │   ├── auth/                     ← AUTHENTICATION MODULE
+│   │   │   ├── controller/           ← Receives login/register requests
+│   │   │   ├── service/              ← The login/register logic
+│   │   │   ├── dto/request/          ← What the client sends (register form data)
+│   │   │   └── dto/response/         ← What the server sends back (tokens + user info)
+│   │   │
+│   │   ├── user/                     ← USER MANAGEMENT MODULE
+│   │   │   ├── controller/           ← Profile update requests
+│   │   │   ├── service/              ← Profile update logic
+│   │   │   └── dto/                  ← Profile data that goes in/out
+│   │   │
+│   │   ├── wallet/                   ← WALLET MODULE
+│   │   │   ├── controller/           ← Balance check requests
+│   │   │   ├── service/              ← Wallet creation logic
+│   │   │   └── dto/                  ← Wallet data that goes in/out
+│   │   │
+│   │   ├── admin/                    ← ADMIN MODULE
+│   │   │   ├── controller/           ← Admin-only requests
+│   │   │   ├── service/              ← Admin logic (user management)
+│   │   │   └── dto/                  ← Admin-specific data
+│   │   │
+│   │   ├── common/                   ← SHARED STUFF
+│   │   │   ├── config/              ← Security, password, JPA config
+│   │   │   ├── exception/           ← Custom exceptions and global handler
+│   │   │   └── dto/                 ← ApiResponse (wraps ALL responses)
+│   │   │
+│   │   ├── entity/                   ← DATABASE TABLE MAPS
+│   │   │   ├── User.java            ← maps to "users" table
+│   │   │   ├── Wallet.java           ← maps to "wallets" table
+│   │   │   └── RefreshToken.java     ← maps to "refresh_tokens" table
+│   │   │
+│   │   ├── repository/               ← DATABASE QUERIES
+│   │   │   ├── UserRepository.java
+│   │   │   ├── WalletRepository.java
+│   │   │   └── RefreshTokenRepository.java
+│   │   │
+│   │   ├── security/                 ← JWT + AUTH FILTERS
+│   │   │   ├── JwtUtil.java          ← Creates/validates JWT tokens
+│   │   │   ├── JwtAuthFilter.java    ← Checks JWT on every request
+│   │   │   ├── CustomUserDetailsService.java  ← Loads user from DB
+│   │   │   └── SecurityConfig.java   ← Ties security together
+│   │   │
+│   │   └── resources/                ← CONFIGURATION FILES
+│   │       ├── application.yml       ← Main config (always loaded)
+│   │       ├── application-dev.yml   ← Dev database settings
+│   │       └── db/migration/         ← SQL files that build the database
+│   │           ├── V1__create_refresh_tokens.sql
+│   │           ├── V2__create_users_table.sql
+│   │           ├── V3__create_wallets_table.sql
+│   │           └── V4__add_pin_and_reset_fields.sql
+│   │
+│   └── src/test/                     ← TESTS
+│       └── java/.../
+│           ├── AuthServiceTest.java  ← Unit tests (fast, no database)
+│           └── AuthControllerIntegrationTest.java  ← Full app test
+│
+├── docs/                             ← REPORTS + GUIDES
+├── .handoffs/HANDOFF.md              ← Context for next developer
+└── README.md                         ← What this project is
 ```
 
-### The Response Path in Detail
+**The golden rule of this structure:**
+
+> Each module (`auth/`, `user/`, `wallet/`, `admin/`) is self-contained. They follow the same pattern: `controller/` → `service/` → `dto/`. You learn one module, you know them all.
+
+**Why this structure instead of putting everything in one package?**
+
+When we had one package (`auth/` with everything), it was:
+- Hard to find things (20+ files in one folder)
+- Confusing what belonged where
+- Impossible to work on multiple features without stepping on each other
+
+The modular structure means:
+- **AuthController** only talks about authentication
+- **UserController** only talks about user profiles
+- **WalletController** only talks about wallets
+- If you need to change login behavior, you know exactly which folder to open
+
+---
+
+### Chapter 3: How The Folders Talk To Each Other
+
+This is the most important concept to understand. Let me show you the communication lines.
+
+```
+                   ┌──────────────────┐
+                   │   CONTROLLER      │
+                   │  (AuthController) │
+                   └────────┬─────────┘
+                            │ CALLS
+                            ▼
+                   ┌──────────────────┐
+                   │   SERVICE         │
+                   │  (AuthService)    │
+                   └──┬───────┬───────┘
+                      │       │
+            CALLS     │       │  CALLS
+                      ▼       ▼
+           ┌────────────┐  ┌────────────┐
+           │ REPOSITORY  │  │ OTHER      │
+           │ (UserRepo)  │  │ SERVICES   │
+           └──────┬─────┘  │ (TokenSrvc)│
+                  │         └────────────┘
+                  ▼
+           ┌────────────┐
+           │ DATABASE    │
+           │ (PostgreSQL)│
+           └────────────┘
+```
+
+**Rules of communication (NEVER break these):**
+
+```
+✅ Controller → Service     (controller calls service)
+✅ Service → Repository     (service calls repository)
+✅ Service → Service        (services can call each other)
+❌ Controller → Repository  (controller should NOT call repository directly)
+❌ Controller → Controller  (controllers don't call each other)
+❌ Repository → Service     (repositories don't call services)
+```
+
+**Why can't the Controller talk directly to the Repository?**
+
+Because that would skip the business logic. Imagine:
 
 ```java
-// In AuthController.java — Step 4
-@PostMapping("/register")                              // "I handle POST /v1/auth/register"
-public ResponseEntity<ApiResponse<AuthResponse>> register(
-        @Valid @RequestBody RegisterRequest request    // Spring converts JSON → Java object
+// WRONG — controller bypasses service
+@GetMapping("/users/{id}")
+public User getUser(@PathVariable UUID id) {
+    return userRepository.findById(id).orElse(null);
+    // No business logic! No logging! No authorization check!
+    // Anyone can look up any user by ID!
+}
+
+// RIGHT — controller delegates to service
+@GetMapping("/users/{id}")
+public ResponseEntity<ApiResponse<UserProfileResponse>> getUser(@PathVariable UUID id) {
+    UserProfileResponse user = userService.getUserById(id);
+    // Service checks: does the requester have permission?
+    // Service checks: is the user deleted?
+    // Service logs: "Profile retrieved for user {id}"
+    return ResponseEntity.ok(ApiResponse.success(user, "User found"));
+}
+```
+
+**The dependency direction matters:**
+
+```
+HIGH-LEVEL (abstract, changes often)        ← You write this
+    Controller  → depends on Service
+        Service  → depends on Repository
+            Repository  → depends on Entity
+LOW-LEVEL (concrete, changes rarely)        ← Spring provides this
+    Entity      → maps to Database
+```
+
+Controllers change when the API changes (new features, new fields).
+Entities rarely change (database structure is stable).
+
+---
+
+### Chapter 4: The Request's Journey — Full Trace
+
+Let me trace what happens when you hit **POST /v1/auth/login** with `{"email": "john@email.com", "password": "mypass123"}`.
+
+I'll walk through every single step so you see how all the pieces connect.
+
+---
+
+**Step 1: The Network**
+
+Your mobile app opens a TCP connection to `server:8080` and sends an HTTP request.
+
+```
+POST /v1/auth/login HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{"email": "john@email.com", "password": "mypass123"}
+```
+
+This is just text sent over the internet. Nothing special yet.
+
+---
+
+**Step 2: Tomcat (The Web Server)**
+
+Tomcat is embedded inside your app (you never installed it separately). It:
+1. Accepts the TCP connection
+2. Reads the bytes until the HTTP request is complete
+3. Passes the request to Spring's DispatcherServlet
+
+**Key insight:** Tomcat is literally inside your JAR file. When you run `./mvnw spring-boot:run`, it starts Tomcat as part of your application process. No separate server installation needed.
+
+---
+
+**Step 3: The Security Filter Chain (Spring Security)**
+
+Before your code sees the request, it goes through a series of security filters. Think of this like airport security before you reach the gate:
+
+```
+Request arrives
+    │
+    ▼
+1. CorsFilter               ← "Is this request from an allowed origin?"
+    │                         (Checks if the mobile app's domain is allowed)
+    ▼
+2. JwtAuthFilter            ← "Does the request have a JWT token?"
+    │                         (For login: no JWT needed, this is public)
+    │                         (JwtAuthFilter sees no token → does nothing → passes through)
+    ▼
+3. Request proceeds to controller
+```
+
+For public endpoints (register, login), the filter chain does nothing — the request passes through.
+
+For protected endpoints (get profile, check balance), JwtAuthFilter:
+1. Extracts the `Authorization: Bearer eyJhbGci...` header
+2. Validates the JWT signature (using the secret key)
+3. Loads the user from the database
+4. Stores the user in the SecurityContext (like a sticky note saying "This is user X")
+5. Passes the request through
+
+---
+
+**Step 4: The DispatcherServlet**
+
+This is Spring MVC's brain. It:
+1. Looks at the path `/v1/auth/login`
+2. Checks its registry: "Who handles this path?"
+3. Finds: `AuthController.login()` method (because of `@PostMapping("/login")` on the class with `@RequestMapping("/v1/auth")`)
+4. Passes the request to that method
+
+---
+
+**Step 5: AuthController (The Receptionist)**
+
+```java
+@PostMapping("/login")
+public ResponseEntity<ApiResponse<AuthResponse>> login(
+        @Valid @RequestBody LoginRequest request
 ) {
-    AuthResponse response = authService.register(request);  // Step 5: delegate to service
-    return ResponseEntity                               // Step 4 (return path)
-            .status(HttpStatus.CREATED)                 // HTTP status 201
-            .body(ApiResponse.success(response, "Registration successful"));  // wrap in standard format
+    // Spring has already:
+    // 1. Read the JSON body
+    // 2. Converted it to a LoginRequest Java object
+    // 3. Validated it (checked @NotBlank, @Email)
+    // 4. If validation failed, returned 400 without running this code
+    
+    AuthResponse response = authService.login(request);
+    return ResponseEntity.ok(ApiResponse.success(response, "Login successful"));
 }
-// Spring takes the ResponseEntity, converts it to JSON, sends it as HTTP response
 ```
+
+The controller does NOTHING except:
+- Receive the validated request
+- Call the service
+- Return the response
+
+No if-statements. No calculations. No database calls. Just delegation.
 
 ---
 
-## Chapter 3: The Four Layers (The Heart of Spring Boot)
-
-Every Spring Boot app has exactly 4 layers. Understanding this is understanding Spring Boot.
-
-```
-┌─────────────────────────────────────────────────────┐
-│                  1. CONTROLLER LAYER                 │
-│              (*Controller.java)                       │
-│  Job: Talk to the outside world (HTTP, JSON)         │
-│  Rules: No business logic. No database calls.        │
-│         Just receive, delegate, respond.             │
-├─────────────────────────────────────────────────────┤
-│                  2. SERVICE LAYER                     │
-│              (*Service.java)                          │
-│  Job: All business rules live here                   │
-│  Rules: Pure Java logic. Orchestrates repositories.  │
-│         This is the "brain" of the app.              │
-├─────────────────────────────────────────────────────┤
-│                  3. REPOSITORY LAYER                  │
-│              (*Repository.java)                       │
-│  Job: Talk to the database                           │
-│  Rules: One method per query. No business logic.     │
-│         Spring Data JPA generates the SQL for you.   │
-├─────────────────────────────────────────────────────┤
-│                  4. ENTITY LAYER                      │
-│              (*Entity.java)                           │
-│  Job: Represent a database table as a Java class     │
-│  Rules: One entity = one table. One field = one column.│
-└─────────────────────────────────────────────────────┘
-```
-
-### The Golden Rule
-
-**Data flows DOWN through the layers, and results flow UP.**
-
-```
-Controller  →  Service  →  Repository  →  Database
-   ↑             ↑             ↑
-Response      Business      Raw data from DB
-formatted     result        (Entity objects)
-as JSON
-```
-
-### Why Separate Layers?
-
-Without layers, you'd write everything in one file:
+**Step 6: AuthService (The Brain)**
 
 ```java
-// BAD: Everything mixed together
-@RestController
-public class MessyController {
-    @PostMapping("/register")
-    public void register(...) {
-        // 1. Parse JSON (controller's job)
-        // 2. Check if email exists (service's job)
-        // 3. Write SQL query (repository's job)
-        // 4. Build response (controller's job)
-        // ALL IN ONE METHOD — impossible to test, impossible to change
+public AuthResponse login(LoginRequest request) {
+    // 1. Find the user by email
+    User user = userRepository.findByEmail(request.email().toLowerCase().trim())
+            .orElseThrow(() -> new BadRequestException("Invalid email or password"));
+    // Note: Same error message for "email not found" and "wrong password"
+    // This prevents attackers from knowing which emails are registered
+    
+    // 2. Check password
+    if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        log.warn("Failed login attempt for email: {}", request.email());
+        throw new BadRequestException("Invalid email or password");
     }
+    
+    // 3. Generate tokens
+    String accessToken = jwtUtil.generateToken(user.getId().toString());
+    String refreshToken = tokenService.createRefreshToken(user);
+    
+    // 4. Return response
+    return AuthResponse.builder()
+            .accessToken(accessToken)
+            .refreshToken(refreshToken)
+            .expiresIn(jwtUtil.getExpirationMs())
+            .user(buildUserInfo(user))
+            .build();
 }
 ```
 
-With layers, each piece is independent:
-
-```java
-// GOOD: Each layer has ONE responsibility
-// Want to change from PostgreSQL to MongoDB? → Only change Repository layer
-// Want to add email verification? → Only change Service layer
-// Want to change JSON format? → Only change Controller layer
-// Want to add CAPTCHA? → Add it in Service without touching Controller or Repository
-```
+Notice what the service handles:
+- **Defensive email handling**: `.toLowerCase().trim()` — prevents "John@Email.com" from causing issues
+- **Secure error messages**: Same message for "wrong email" and "wrong password" — prevents email harvesting
+- **Logging**: Failed attempts are logged (but successful ones might not be, depends on requirements)
+- **Token generation**: Creates both access and refresh tokens
 
 ---
 
-## Chapter 4: Deep Dive — Each Layer Explained
+**Step 7: UserRepository (The Database Bridge)**
 
-### 4.1 Controllers — The Receptionist
-
-Controllers are like a hotel receptionist. They:
-
-- **Receive** requests (guests arriving)
-- **Validate** the request format (do you have a reservation?)
-- **Pass** to the right service (let me call housekeeping)
-- **Respond** with the result (here's your room key)
-
-**File**: `AuthController.java`
+When the service calls `userRepository.findByEmail(email)`:
 
 ```java
-@RestController                              // Tells Spring: "I'm a controller"
-@RequestMapping("/v1/auth")                  // All endpoints start with /v1/auth
-public class AuthController {
-
-    // Dependency Injection (see Chapter 5)
-    private final AuthService authService;    // Controller holds a reference to Service
-
-    // Constructor — Spring calls this to give AuthController its dependencies
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
-
-    @PostMapping("/register")                // Handles POST /v1/auth/register
-    public ResponseEntity<ApiResponse<AuthResponse>> register(
-            @Valid @RequestBody RegisterRequest request  // Takes JSON body, validates it
-    ) {
-        // 1. DELEGATE to service (no logic here!)
-        AuthResponse response = authService.register(request);
-
-        // 2. RETURN response wrapped in standard format
-        return ResponseEntity
-                .status(HttpStatus.CREATED)               // HTTP 201
-                .body(ApiResponse.success(response, "Registration successful"));
-    }
-}
-```
-
-**What `@Valid @RequestBody` does**:
-
-When a mobile app sends:
-```json
-{"firstName": "", "email": "bad-email", "password": "ab"}
-```
-
-Spring automatically:
-1. Reads the JSON → creates a `RegisterRequest` object
-2. Checks the validation annotations on `RegisterRequest.java`:
-
-```java
-public record RegisterRequest(
-    @NotBlank(message = "First name is required")     // ← fails: empty string
-    @Size(min = 1, max = 100) String firstName,
-
-    @Email(message = "Email must be valid")            // ← fails: "bad-email"
-    String email,
-
-    @Size(min = 8, max = 128) String password          // ← fails: only 2 chars
-) {}
-```
-
-3. Detects 3 validation failures
-4. Automatically returns `400 Bad Request` with details — AuthController.register() NEVER RUNS
-
-This is called **declarative validation** — you declare the rules, Spring enforces them.
-
-### 4.2 Services — The Brain
-
-Services contain ALL business logic. If you're debating where to put code, put it in a Service.
-
-**File**: `AuthService.java`
-
-```java
-@Service                                          // Tells Spring: "I'm a Service"
-@Transactional                                    // All methods are database transactions
-public class AuthService {
-
-    // Services hold references to Repositories and other Services
-    private final UserRepository userRepository;
-    private final WalletRepository walletRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtUtil jwtUtil;
-    private final AccountNumberGenerator accountNumberGenerator;
-    private final TokenService tokenService;
-
-    // Constructor injection — Spring provides all dependencies
-    public AuthService(
-            UserRepository userRepository,
-            WalletRepository walletRepository,
-            PasswordEncoder passwordEncoder,
-            JwtUtil jwtUtil,
-            AccountNumberGenerator accountNumberGenerator,
-            TokenService tokenService
-    ) {
-        this.userRepository = userRepository;
-        this.walletRepository = walletRepository;
-        // ... store all references
-    }
-
-    public AuthResponse register(RegisterRequest request) {
-        // STEP 1: VALIDATE BUSINESS RULES
-        if (userRepository.existsByEmail(request.email())) {
-            throw new DuplicateResourceException("Email already registered");
-        }
-        if (userRepository.existsByPhone(request.phone())) {
-            throw new DuplicateResourceException("Phone already registered");
-        }
-
-        // STEP 2: CREATE USER ENTITY
-        User user = User.builder()
-                .firstName(request.firstName())
-                .lastName(request.lastName())
-                .email(request.email().toLowerCase().trim())
-                .phone(request.phone())
-                .passwordHash(passwordEncoder.encode(request.password()))  // Hash password!
-                .verificationToken(tokenService.generateSecureToken())    // For email verification
-                .build();
-
-        user = userRepository.save(user);        // Save to database
-
-        // STEP 3: CREATE WALLET
-        Wallet wallet = Wallet.builder()
-                .userId(user.getId())
-                .accountNumber(accountNumberGenerator.generate())
-                .build();
-        walletRepository.save(wallet);
-
-        // STEP 4: GENERATE TOKENS
-        String refreshToken = tokenService.createRefreshToken(user);
-
-        // STEP 5: BUILD RESPONSE
-        return buildAuthResponse(user, refreshToken);
-    }
-}
-```
-
-**What `@Transactional` means**:
-
-If the wallet creation fails (step 3), the user creation (step 2) is automatically **undone**. The database stays consistent. Without `@Transactional`, you'd have a user with no wallet — a bug.
-
-Think of it like a bank transfer:
-```
-transferMoney() {
-    withdraw(fromAccount, 100);    // Step 1
-    deposit(toAccount, 100);       // Step 2 — if this fails, step 1 must undo
-}
-```
-
-`@Transactional` ensures: ALL steps succeed, OR the database looks like nothing happened.
-
-### 4.3 Repositories — The Database Translator
-
-Repositories translate between Java objects and database tables. You define an interface, Spring writes the implementation.
-
-**File**: `UserRepository.java`
-
-```java
-@Repository                                        // Tells Spring: "I'm a Repository"
 public interface UserRepository extends JpaRepository<User, UUID> {
-    // Spring Data JPA reads method names and generates SQL:
-
     Optional<User> findByEmail(String email);
-    // → SELECT * FROM users WHERE email = ?
-
-    Optional<User> findByPhone(String phone);
-    // → SELECT * FROM users WHERE phone = ?
-
-    boolean existsByEmail(String email);
-    // → SELECT COUNT(*) FROM users WHERE email = ?  (returns true if > 0)
-
-    @Query(value = "SELECT * FROM users WHERE id = :id", nativeQuery = true)
-    Optional<User> findByIdIncludingDeleted(@Param("id") UUID id);
-    // → Runs raw SQL. Needed because @SQLRestriction hides deleted users
 }
 ```
 
-**How method name parsing works**:
-
-| Method Name | Generated SQL |
-|---|---|
-| `findByEmail(String email)` | `WHERE email = ?` |
-| `findByEmailAndPhone(String email, String phone)` | `WHERE email = ? AND phone = ?` |
-| `findByEmailOrPhone(String email, String phone)` | `WHERE email = ? OR phone = ?` |
-| `findByCreatedAtAfter(LocalDateTime date)` | `WHERE created_at > ?` |
-| `findByRoleOrderByEmailAsc(Role role)` | `WHERE role = ? ORDER BY email ASC` |
-| `countByRole(Role role)` | `SELECT COUNT(*) ... WHERE role = ?` |
-| `deleteByEmail(String email)` | `DELETE ... WHERE email = ?` |
-
-**Methods you get for FREE** (from `JpaRepository<User, UUID>`):
-
-| Method | What it does |
-|---|---|
-| `findAll()` | `SELECT * FROM users` |
-| `findById(id)` | `SELECT * FROM users WHERE id = ?` |
-| `save(user)` | If id=null → INSERT, if id exists → UPDATE |
-| `deleteById(id)` | `DELETE FROM users WHERE id = ?` |
-| `count()` | `SELECT COUNT(*) FROM users` |
-| `existsById(id)` | `SELECT COUNT(*) FROM users WHERE id = ?` |
-
-**Key insight**: You wrote an INTERFACE (just method signatures), not an IMPLEMENTATION. Spring Data JPA generates the implementation class at runtime. This is why Spring Boot can build apps with so little code.
-
-### 4.4 Entities — The Table Map
-
-An Entity is a Java class where each field represents a database column.
-
-**File**: `User.java`
-
-```java
-@Entity                                              // Tells Spring: "This is a database table"
-@Table(name = "users")                               // The table name in PostgreSQL
-@EntityListeners(AuditingEntityListener.class)        // Enables auto-timestamps
-@SQLRestriction("deleted = false")                   // Every query adds WHERE deleted = false
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)  // Auto-generate UUID
-    private UUID id;                                 // → Column: id UUID PRIMARY KEY
-
-    @Column(nullable = false, unique = true, length = 255)
-    private String email;                            // → Column: email VARCHAR(255) NOT NULL UNIQUE
-
-    @Column(name = "password_hash", nullable = false, length = 255)
-    private String passwordHash;                     // → Column: password_hash VARCHAR(255) NOT NULL
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private Role role = Role.USER;                   // → Column: role VARCHAR(20) NOT NULL DEFAULT 'USER'
-
-    @Column(name = "email_verified")
-    @Builder.Default
-    private boolean emailVerified = false;           // → Column: email_verified BOOLEAN DEFAULT FALSE
-
-    @Version
-    private Integer version;                         // → Column: version INTEGER — for locking
-
-    @CreatedDate
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;                 // → Column: created_at TIMESTAMP
-
-    @LastModifiedDate
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;                 // → Column: updated_at TIMESTAMP
-}
-```
-
-**Compare this to the actual SQL** (V2__create_users_table.sql):
+Spring Data JPA reads this method and automatically generates:
 
 ```sql
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY,
-    email VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'USER',
-    email_verified BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+SELECT * FROM users WHERE email = ? AND deleted = false
 ```
 
-**See the pattern?** Every `@Column` in Java = one line in SQL. Spring Boot keeps them in sync (when `ddl-auto: validate` — it checks they match).
+Note: The `AND deleted = false` comes from `@SQLRestriction("deleted = false")` on the User entity. Every query automatically excludes soft-deleted users.
 
-### The @SQLRestriction Trick
+**You never wrote that SQL. You never even configured it.**
+Spring generates it from the method name + entity annotations.
+
+---
+
+**Step 8: PostgreSQL (The Database)**
+
+PostgreSQL executes the query and returns the user row (or empty result).
+
+The database doesn't know or care about your Java code. It just executes SQL and returns data.
+
+---
+
+**Step 9: Response Flows Back**
+
+```
+PostgreSQL returns data
+    → Repository returns User entity
+        → Service builds AuthResponse
+            → Controller wraps in ApiResponse.success()
+                → Spring converts to JSON (Jackson library)
+                    → Security filter chain adds response headers
+                        → Tomcat sends HTTP response
+```
+
+The mobile app receives:
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzM4NCJ9...",
+    "refreshToken": "550e8400-e29b-41d4-a716-446655440000",
+    "expiresIn": 900000,
+    "user": {
+      "id": "70c3c6bc-4c90-4c18-a36e-4e6b8a43540d",
+      "firstName": "John",
+      "lastName": "Doe",
+      "email": "john@email.com",
+      "role": "USER",
+      "emailVerified": false,
+      "pinSet": false
+    }
+  },
+  "message": "Login successful",
+  "timestamp": "2026-07-10T12:00:00"
+}
+```
+
+**Every response in this project looks the same.** The mobile app can always expect `{success, data, message, timestamp}`.
+
+---
+
+## Part 2: Deep Into Each Layer
+
+Now that you have the big picture, let's drill into each layer.
+
+---
+
+### Chapter 5: Controllers — The Reception Desk
+
+**Analogy:** A controller is like a hotel receptionist.
+- A guest arrives (HTTP request)
+- Receptionist checks: did you bring what we need? (validation)
+- Receptionist calls the right department (service)
+- Receptionist gives you the result (response)
+
+**What a controller MUST do:**
+1. Accept the request
+2. Validate input (via `@Valid`)
+3. Call the service
+4. Return the result
+
+**What a controller MUST NOT do:**
+- No business logic (no if-else for business rules)
+- No database calls (no repository calls)
+- No complex calculations
+
+**Spot the violation:**
+
+```java
+// This is WRONG — controller doing service work
+@PostMapping("/transfer")
+public ResponseEntity<?> transfer(@RequestBody TransferRequest req) {
+    if (req.amount() <= 0) {           // ← Business logic in controller!
+        return ResponseEntity.badRequest().body("Amount must be positive");
+    }
+    String result = walletRepo.findById(req.fromWallet())  // ← Controller calling repository!
+            .map(w -> doTransfer(w, req))                  // ← Business logic!
+            .orElse("Wallet not found");
+    return ResponseEntity.ok(result);
+}
+
+// This is RIGHT — controller just delegates
+@PostMapping("/transfer")
+public ResponseEntity<ApiResponse<TransferResponse>> transfer(
+        @Valid @RequestBody TransferRequest req
+) {
+    TransferResponse result = walletService.transfer(req);
+    return ResponseEntity.ok(ApiResponse.success(result, "Transfer completed"));
+}
+```
+
+**The `@Valid` annotation is doing a LOT of work:**
+
+When you write `@Valid @RequestBody RegisterRequest request`, Spring:
+1. Reads the JSON body from the HTTP request
+2. Creates a `RegisterRequest` Java object (using Jackson)
+3. For every field with a validation annotation (`@NotBlank`, `@Email`, `@Size`...):
+   - Checks the value
+   - If any field fails, collects all error messages
+4. If there are errors:
+   - Throws a `MethodArgumentNotValidException`
+   - This is caught by... `GlobalExceptionHandler`!
+   - Returns HTTP 400 with all the validation errors
+5. If no errors:
+   - Passes the validated object to your controller method
+
+**Think of it like airport security:** Passengers go through the scanner (validation). If they have prohibited items, they're stopped before boarding. Clean passengers board the plane (reach your controller method).
+
+---
+
+### Chapter 6: Services — Where Business Logic Lives
+
+**Analogy:** A service is like the kitchen in a restaurant. The waiter (controller) brings the order, the kitchen (service) does the actual cooking.
+
+**What goes in a service:**
+- Business rules ("email must be unique")
+- Calculations (fee calculation, interest)
+- Orchestration (do A, then B, then C — all or nothing)
+- Security checks ("can this user do this?")
+- External service calls (send email, call payment API)
+
+**The `@Service` annotation is just a label.** It marks the class so Spring knows to create it and inject it where needed. The actual "service-ness" comes from what you put inside.
+
+**`@Transactional` — The Safety Net:**
+
+```java
+@Service
+@Transactional  // ← Every public method is a database transaction
+public class TransferService {
+    
+    public void transfer(UUID fromWalletId, UUID toWalletId, BigDecimal amount) {
+        Wallet from = walletRepository.findById(fromWalletId)
+                .orElseThrow(() -> new ResourceNotFoundException("Source wallet not found"));
+        Wallet to = walletRepository.findById(toWalletId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target wallet not found"));
+        
+        from.setBalance(from.getBalance().subtract(amount));  // Deduct
+        to.setBalance(to.getBalance().add(amount));            // Add
+        
+        walletRepository.save(from);
+        walletRepository.save(to);
+    }
+}
+```
+
+What happens if `walletRepository.save(to)` fails (database error)?
+
+With `@Transactional`:
+- The `save(from)` change is **automatically rolled back**
+- The database is exactly as it was before `transfer()` ran
+- No lost money
+
+Without `@Transactional`:
+- `save(from)` already committed the deduction
+- `save(to)` failed
+- Money disappeared from the system
+
+**This is why `@Transactional` exists.** It wraps your method in: BEGIN TRANSACTION → do work → COMMIT (if no error) / ROLLBACK (if error).
+
+**The Service is also where you handle cross-cutting concerns:**
+
+```java
+public AuthResponse register(RegisterRequest request) {
+    // Validation
+    if (userRepository.findByEmail(email).isPresent()) {
+        throw new BadRequestException("Email already taken");
+    }
+    
+    // Creation
+    User user = User.builder()
+            .email(email)
+            .passwordHash(passwordEncoder.encode(password))
+            .build();
+    
+    // Side effects
+    accountNumberGenerator.generateNewAccount(user);  // Create wallet
+    emailService.sendVerificationEmail(user);          // Send email
+    auditLogger.log("User registered: " + email);      // Log
+    
+    // Return
+    return buildAuthResponse(user);
+}
+```
+
+The controller doesn't know about wallet creation, email sending, or audit logging. That's all the service's job.
+
+---
+
+### Chapter 7: Repositories — The Database Bridge
+
+**Analogy:** A repository is an interpreter. Your Java code speaks methods, the database speaks SQL. The repository translates.
+
+**What makes Spring Data JPA magical:**
+
+You write an INTERFACE, not an implementation:
+
+```java
+public interface UserRepository extends JpaRepository<User, UUID> {
+    Optional<User> findByEmail(String email);
+}
+```
+
+Spring generates a class at runtime that:
+1. Parses `findByEmail` → "SELECT * FROM users WHERE email = ?"
+2. Executes the query
+3. Converts the result set to a `User` object
+4. Returns it wrapped in `Optional`
+
+**Naming convention = SQL:**
+
+| Method | Generated SQL |
+|---|---|
+| `findByEmail(String email)` | `WHERE email = ?` |
+| `findByEmailAndPhone(e, p)` | `WHERE email = ? AND phone = ?` |
+| `findByEmailOrPhone(e, p)` | `WHERE email = ? OR phone = ?` |
+| `findByCreatedAtAfter(date)` | `WHERE created_at > ?` |
+| `findByRoleOrderByEmailAsc(role)` | `WHERE role = ? ORDER BY email ASC` |
+| `findByFirstNameContainingIgnoreCase(name)` | `WHERE UPPER(first_name) LIKE ?` |
+| `deleteByEmail(email)` | `DELETE FROM users WHERE email = ?` |
+
+**The methods you get from JpaRepository without writing anything:**
+
+```
+save(entity)         → INSERT (if new) or UPDATE (if exists)
+findById(id)         → SELECT with primary key
+findAll()            → SELECT all rows
+findAll(pageable)    → SELECT with pagination (LIMIT/OFFSET)
+count()              → SELECT COUNT(*)
+delete(entity)       → DELETE
+deleteById(id)       → DELETE with primary key
+existsById(id)       → SELECT COUNT(*) and return boolean
+```
+
+**Native queries — when the naming convention isn't enough:**
+
+```java
+@Query(value = "SELECT * FROM users WHERE email = :email AND deleted = true", nativeQuery = true)
+Optional<User> findDeletedByEmail(@Param("email") String email);
+```
+
+Use `nativeQuery = true` when:
+- You need database-specific features
+- The query is too complex for the naming convention
+- You need to bypass Hibernate filters (like `@SQLRestriction`)
+
+---
+
+### Chapter 8: Entities — The Database Mirror
+
+**Analogy:** An Entity is a photograph of a database row, taken at a specific moment.
+
+```java
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+    
+    @Column(nullable = false, unique = true)
+    private String email;
+    
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
+}
+```
+
+Each field maps to a column. Each instance represents one row.
+
+**The important annotations:**
+
+| Annotation | Purpose |
+|---|---|
+| `@Entity` | "This class maps to a database table" |
+| `@Table(name = "users")` | "The table name is 'users'" |
+| `@Id` | "This is the primary key" |
+| `@GeneratedValue` | "Let the database generate this value" |
+| `@Column(name = "col_name")` | "Override the column name" |
+| `@Column(nullable = false)` | "This column can't be null" |
+| `@Column(unique = true)` | "No duplicate values allowed" |
+| `@Enumerated(EnumType.STRING)` | "Store enum as a string, not a number" |
+| `@CreatedDate` | "Set this when the row is first created" |
+| `@LastModifiedDate` | "Update this every time the row changes" |
+| `@Version` | "Track for optimistic locking (prevents concurrent edits)" |
+| `@SQLRestriction` | "Add a WHERE clause to EVERY query for this entity" |
+
+**The `@SQLRestriction` trick deserves special attention:**
 
 ```java
 @SQLRestriction("deleted = false")
+public class User { ... }
 ```
 
-This adds `AND deleted = false` to EVERY SQL query Spring Data JPA generates. When a user is soft-deleted (deleted = true), they simply disappear from all queries. The app behaves as if the user was deleted, but the data is still in the database.
+This means: Every time you call `findById()`, `findAll()`, `findByEmail()` — Spring adds `AND deleted = false` to the SQL.
 
-**Problem**: The admin can't find deleted users to restore them.  
-**Solution**: A native query that bypasses the restriction:
+So `userRepository.findAll()` actually runs: `SELECT * FROM users WHERE deleted = false`
 
-```java
-@Query(value = "SELECT * FROM users WHERE id = :id", nativeQuery = true)
-Optional<User> findByIdIncludingDeleted(@Param("id") UUID id);
-```
+- Soft-deleted users simply don't exist as far as the app is concerned
+- The admin can restore them (using a native query that bypasses the restriction)
+- When you query "how many users", deleted accounts don't count
 
-Native queries don't go through Hibernate's filter system — they run the exact SQL you write.
-
----
-
-## Chapter 5: Dependency Injection (The Superpower)
-
-### The Problem
-
-Service A needs Service B to work. Service B needs Repository C. Repository C needs Database D.
+**Entity lifecycle hooks:**
 
 ```java
-// Without Spring — you manage everything
-public class AuthService {
-    private UserRepository repo;
+@Entity
+@EntityListeners(AuditingEntityListener.class)
+public class User {
+    @CreatedDate
+    private LocalDateTime createdAt;     // Auto-set on first save
     
-    public AuthService() {
-        // You create everything manually
-        this.repo = new UserRepository(Database.getConnection());
-        // What if you change the database? Edit every class?
+    @LastModifiedDate
+    private LocalDateTime updatedAt;     // Auto-set on every save
+    
+    @PrePersist
+    public void beforeSave() {
+        this.email = this.email.toLowerCase().trim();  // Auto-format before saving
     }
 }
 ```
 
-This is called **tight coupling** — every class knows how to build its dependencies. Change one thing, break everything.
-
-### The Solution
-
-```java
-// With Spring — you just declare what you need
-public class AuthService {
-    private final UserRepository userRepository;
-
-    // "I don't care how this is created. Just give it to me."
-    public AuthService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-}
-```
-
-Spring looks at this constructor and says: *"AuthService needs a UserRepository. Let me check if I have one..."*
-
-1. Spring looks at `UserRepository`
-2. Sees `@Repository` → "I have one!"
-3. Creates a single instance (a "bean")
-4. Passes it to `AuthService`'s constructor
-5. Also creates `PasswordEncoder`, `JwtUtil`, `TokenService` — all the things `AuthService` needs
-6. Passes all of them to the constructor
-
-This is called **Inversion of Control** — instead of your code reaching out to get dependencies, Spring injects them into your code.
-
-### How Spring Knows What to Create
-
-Spring scans for these annotations at startup:
-
-| Annotation | Creates | Scope |
-|---|---|---|
-| `@Component` | Generic bean | 1 instance for the whole app |
-| `@Service` | Service bean | 1 instance for the whole app |
-| `@Repository` | Repository bean | 1 instance for the whole app |
-| `@Bean` (in `@Configuration`) | Custom bean | 1 instance for the whole app |
-
-**Important**: All beans are SINGLETONS by default — only ONE instance exists. When you inject `UserRepository` into 10 different services, they all get the SAME instance. This is safe because services don't store user data as fields (they're stateless).
-
-### The Constructor Injection Pattern
-
-```java
-// CORRECT — field is final, dependencies are clear, testable
-public class AuthService {
-    private final UserRepository userRepository;  // final = cannot change
-
-    public AuthService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-}
-```
-
-**Why this pattern is used everywhere in this project:**
-
-1. **Final fields** — once set, never change. Thread-safe.
-2. **Explicit dependencies** — you can see everything a class needs by looking at its constructor
-3. **Testable** — in tests, you can pass mock objects:
-
-```java
-// In AuthServiceTest.java
-@Mock
-private UserRepository userRepository;  // Mockito creates a fake repository
-
-@BeforeEach
-void setUp() {
-    // Pass the mock to AuthService — no database needed!
-    authService = new AuthService(
-            userRepository,        // ← mock
-            walletRepository,      // ← mock
-            passwordEncoder,       // ← real (BCrypt)
-            jwtUtil,               // ← mock
-            accountNumberGenerator,// ← real
-            tokenService           // ← spy (partial mock)
-    );
-}
-```
+- `@PrePersist`: Runs BEFORE the first save
+- `@PreUpdate`: Runs BEFORE every update
+- `@PostLoad`: Runs AFTER reading from database
+- `@PostPersist`: Runs AFTER the first save
 
 ---
 
-## Chapter 6: How Spring Boot Starts Up
+### Chapter 9: DTOs — The Data Bodyguards
 
-### Step-by-step from `./mvnw spring-boot:run`
+**Analogy:** A DTO is like a bodyguard. The entity (VIP) stays safely inside. The DTO goes out to meet the public.
 
-```
-1. Maven compiles all .java files to .class
-2. Maven packages the JAR with embedded Tomcat
-3. Java starts the JAR
-4. Spring Boot finds application.yml   ← Where port, database, etc. are configured
-5. Tomcat starts on port 8080           ← Server is now listening
-6. Spring scans the package             ← Finds EVERY annotation in com.novawallet...
-   a. Finds @Configuration classes      ← SecurityConfig, PasswordConfig, JpaAuditingConfig
-   b. Runs their @Bean methods          ← Creates PasswordEncoder, SecurityFilterChain
-   c. Finds @RestController classes     ← AuthController, UserController, AdminController, WalletController
-   d. Finds @Service classes            ← AuthService, UserService, WalletService, AdminService, TokenService
-   e. Finds @Repository interfaces      ← UserRepository, WalletRepository, RefreshTokenRepository
-   f. Finds @Entity classes             ← User, Wallet, RefreshToken
-7. Spring resolves dependencies:
-   a. Sees AuthController needs AuthService     → creates AuthService first
-   b. AuthService needs UserRepository, etc.    → creates them first
-   c. Builds the dependency tree from bottom up → creates all beans
-8. Spring Data JPA processes repositories:
-   a. UserRepository extends JpaRepository
-   b. Spring generates implementation with all the SQL methods
-   c. Connects to PostgreSQL
-   d. Validates entities match database (ddl-auto: validate)
-9. Flyway runs:
-   a. Checks flyway_schema_history table
-   b. Runs any NEW migration files
-   c. Marks them as complete
-10. Spring Security configures:
-    a. Sets up the filter chain from SecurityConfig
-    b. Creates JwtAuthFilter instance
-11. DispatcherServlet registers all endpoints:
-    a. /v1/auth/register → AuthController.register()
-    b. /v1/auth/login    → AuthController.login()
-    c. /v1/users/me      → UserController.getProfile()
-    d. ... etc for all 15+ endpoints
-12. Application is READY
-    Tomcat logs: "Started NovawalletApiApplication in 8.6 seconds"
-```
-
-### The Main Method
+**Why not return the entity directly?** 
 
 ```java
-// NovawalletApiApplication.java
-@SpringBootApplication                          // This ONE annotation does ALL of the above
-public class NovawalletApiApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(NovawalletApiApplication.class, args);
-        // This single line starts the ENTIRE application
-        // 1. Starts Tomcat
-        // 2. Scans for beans
-        // 3. Sets up JPA
-        // 4. Configures security
-        // 5. Runs migrations
-        // 6. Registers endpoints
-        // 7. Waits for requests
+// What if you returned the User entity directly from the API?
+{
+  "id": "70c3c6bc-...",
+  "email": "john@email.com",
+  "passwordHash": "$2a$10$...",      // ← PASSWORD HASH! 
+  "pinHash": "$2a$10$...",            // ← PIN HASH!
+  "deleted": false,                    // ← INTERNAL STATE
+  "version": 1,                        // ← LOCKING FIELD
+  "verificationToken": "abc123",       // ← VERIFICATION TOKEN!
+  "resetToken": null,
+  "pinAttempts": 0,
+  "pinLockedUntil": null
+}
+```
+
+You just leaked:
+- Password hash (could be cracked offline)
+- PIN hash
+- Email verification token (anyone could verify any email)
+- Internal implementation details
+
+DTOs solve this by defining EXACTLY what to expose:
+
+```java
+// DTO — only contains what the client needs
+public record UserProfileResponse(
+    String id,
+    String firstName,
+    String lastName,
+    String email,
+    String role,
+    boolean emailVerified,
+    boolean pinSet          // ← Just "yes or no", not the hash!
+) {
+    public static UserProfileResponse from(User user) {
+        return new UserProfileResponse(
+                user.getId().toString(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getEmail(),
+                user.getRole().name(),
+                user.isEmailVerified(),
+                user.getPinHash() != null  // ← Just checking if it exists
+        );
     }
 }
 ```
 
-`@SpringBootApplication` is actually 3 annotations in one:
+**The `from()` pattern is used everywhere:**
 
-| Annotation | What it does |
-|---|---|
-| `@SpringBootConfiguration` | Marks this as the main config class |
-| `@EnableAutoConfiguration` | Spring guesses what you need (has JPA? → configure JPA. Has web? → configure Tomcat) |
-| `@ComponentScan` | Scan this package and ALL sub-packages for @Component, @Service, @Repository, etc. |
+```java
+// In any service:
+return UserProfileResponse.from(user);
+// One line converts Entity → DTO safely
+```
 
-This is why EVERY class is under `com.novawallet.novawallet_api/` — `@ComponentScan` starts at the main class's package and scans everything inside it.
+**Records vs Classes for DTOs:**
+
+```java
+// OLD WAY - 60 lines of boilerplate
+public class RegisterRequest {
+    private String email;
+    private String password;
+    public String getEmail() { return email; }
+    public void setEmail(String e) { this.email = e; }
+    // 20 more lines for password, toString, equals, hashCode
+}
+
+// NEW WAY (Java 16+) - 1 line
+public record RegisterRequest(
+    String email,
+    String password
+) {}
+// Java auto-creates: constructor, getters (email(), password()), 
+//                    toString(), equals(), hashCode()
+```
+
+Records are perfect for DTOs because:
+- They're **immutable** — once created, fields can't change
+- They automatically get `toString()`, `equals()`, `hashCode()`
+- They're concise — the data shape is immediately visible
+- They support validation annotations
 
 ---
 
-## Chapter 7: Configuration Management
+### Chapter 10: Configuration — How the App Knows What to Do
 
-### The 3 Configuration Files
+**Analogy:** Configuration is like a restaurant's opening instructions. "Open at 8am. Close at 10pm. Suppliers deliver on Tuesdays. Fire alarm code is 1234."
 
-| File | Profile | Database | When to Use |
-|---|---|---|---|
-| `application.yml` | Default | No DB config | Common settings for ALL environments |
-| `application-dev.yml` | `dev` | PostgreSQL (local) | Development on your machine |
-| `application-prod.yml` | `prod` | Production | Live server |
-
-### How Profiles Work
+**The configuration files:**
 
 ```yaml
-# application.yml  ← ALWAYS loaded
+# application.yml (always loaded)
+server:
+  port: 8080              # Listen on port 8080
+
 spring:
   profiles:
-    active: dev     ← Also load application-dev.yml
+    active: dev           # Also load application-dev.yml
+
+jwt:
+  secret: base64-secret-key-here
+  expiration: 900000      # 15 minutes in milliseconds
 ```
 
-When you set `spring.profiles.active: dev`, Spring loads `application.yml` first, then overlays `application-dev.yml` on top. Settings in `dev` override settings in the base file.
-
-**The dev profile has:**
 ```yaml
+# application-dev.yml (loaded when "dev" profile is active)
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/novawallet
@@ -704,714 +835,795 @@ spring:
     password: 8407
 ```
 
-**The prod profile would have:**
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}
-    username: ${DB_USER}
-    password: ${DB_PASSWORD}
+**How configuration reaches your code:**
+
+```
+application.yml  ──→  @Value("${jwt.secret}")  ──→  JwtUtil.java
+                      @Value reads: "ZGV2LXNlY3JldC1rZXkt..."
 ```
 
-Notice: production uses `${}` environment variables — NEVER hardcode production credentials.
-
-### How configuration values get into Java code
-
-1. You define a value in YAML:
-```yaml
-jwt:
-  secret: ZGV2LXNlY3JldC1rZXk...
-  expiration: 900000
-```
-
-2. You inject it in Java:
 ```java
+// In JwtUtil.java constructor:
 public JwtUtil(
-        @Value("${jwt.secret}") String secret,           // ← from YAML
-        @Value("${jwt.expiration}") long expirationMs     // ← from YAML
+        @Value("${jwt.secret}") String secret,
+        @Value("${jwt.expiration}") long expirationMs
 ) {
     this.secretKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     this.expirationMs = expirationMs;
 }
 ```
 
-3. The `${}` syntax also supports defaults:
+**The `@ConfigurationProperties` approach (cleaner for many values):**
+
+We don't use this yet, but it's good to know:
+
 ```yaml
-jwt:
-  secret: ${JWT_SECRET:ZGV2LXNlY3JldC1rZXk...}
-  #         ↑ env variable    ↑ default value
+app:
+  jwt:
+    secret: abc123
+    expiration: 900000
+  verification:
+    expiry-hours: 24
 ```
-
-This means: use the `JWT_SECRET` environment variable if set, otherwise use the hardcoded default.
-
----
-
-## Chapter 8: Spring Security Explained
-
-### What SecurityConfig.java Does
 
 ```java
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity
-public class SecurityConfig {
-
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            // 1. Disable CSRF (we use JWT, not cookies)
-            .csrf(csrf -> csrf.disable())
-            
-            // 2. No sessions (every request is independent)
-            .sessionManagement(session ->
-                    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            
-            // 3. Define access rules
-            .authorizeHttpRequests(auth -> auth
-                // These paths are PUBLIC — anyone can call them
-                .requestMatchers(
-                    "/v1/auth/register",
-                    "/v1/auth/login",
-                    "/v1/auth/verify",
-                    "/v1/auth/forgot-password",
-                    "/v1/auth/reset-password",
-                    "/v1/auth/refresh"
-                ).permitAll()
-                
-                // Swagger docs are PUBLIC
-                .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
-                
-                // EVERYTHING ELSE requires authentication
-                .anyRequest().authenticated()
-            )
-            
-            // 4. Tell Spring to use JWT, not login forms
-            .formLogin(form -> form.disable())
-            .httpBasic(basic -> basic.disable())
-            
-            // 5. Insert JwtAuthFilter BEFORE Spring's UsernamePassword filter
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-        
-        return http.build();
-    }
-}
-```
-
-### How JwtAuthFilter Works
-
-```
-REQUEST COMES IN (no session cookie)
-    │
-    ▼
-JwtAuthFilter.doFilterInternal()
-    │
-    ├── Extract token from "Authorization: Bearer <token>"
-    │
-    ├── Is token present?  → Yes → Validate JWT signature
-    │                             │
-    │                             ├── Valid? → Extract userId from JWT
-    │                             │            Load user from database (loadUserById)
-    │                             │            Create Authentication object
-    │                             │            Store in SecurityContext
-    │                             │            → "User is now logged in for this request"
-    │                             │
-    │                             └── Invalid? → Log warning, continue as anonymous
-    │
-    └── Is token missing? → Continue as anonymous user
-                            │
-                            ├── Public endpoint? → Request proceeds to controller
-                            └── Protected endpoint? → Spring returns 403 Forbidden
-```
-
-**The key**: Spring Security doesn't use sessions. On every request, the JWT is extracted, validated, and the user is loaded from the database. This is called **stateless authentication**.
-
-### The `@AuthenticationPrincipal` Trick
-
-In controllers, you can get the authenticated user:
-
-```java
-@GetMapping("/me")
-public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile(
-        @AuthenticationPrincipal UserDetails userDetails  // ← Spring injects the authenticated user
-) {
-    UUID userId = UUID.fromString(userDetails.getUsername());  // Username = userId (UUID)
-    UserProfileResponse profile = userService.getProfile(userId);
-    return ResponseEntity.ok(ApiResponse.success(profile, "Profile retrieved"));
-}
-```
-
-`@AuthenticationPrincipal` looks at the SecurityContext (which JwtAuthFilter set up) and gets the user details. This only works if the request has a valid JWT — otherwise, the filter chain blocks the request before it reaches this method.
-
----
-
-## Chapter 9: Error Handling — The GlobalExceptionHandler
-
-The `GlobalExceptionHandler.java` is like a safety net — it catches ALL exceptions thrown by any controller and returns a consistent JSON response.
-
-### How it works
-
-```java
-@RestControllerAdvice                                  // "I catch exceptions from ALL controllers"
-public class GlobalExceptionHandler {
-
-    // When ANY controller throws ResourceNotFoundException:
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFound(
-            ResourceNotFoundException exception,
-            HttpServletRequest request
-    ) {
-        return buildResponse(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", exception.getMessage(), request);
-    }
-
-    // When ANY controller throws DuplicateResourceException:
-    @ExceptionHandler(DuplicateResourceException.class)
-    public ResponseEntity<ErrorResponse> handleDuplicateResource(
-            DuplicateResourceException exception,
-            HttpServletRequest request
-    ) {
-        return buildResponse(HttpStatus.CONFLICT, "DUPLICATE_RESOURCE", exception.getMessage(), request);
-    }
-
-    // Catch ANY exception not handled above:
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGeneralException(
-            Exception exception,
-            HttpServletRequest request
-    ) {
-        log.error("Unhandled exception", exception);  // ← logs the FULL stack trace
-        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR",
-                "An unexpected error occurred", request);
-    }
-}
-```
-
-### The Flow
-
-```
-AuthService.register():
-    if email exists → throw new DuplicateResourceException("Email already registered")
-                            ↓
-                    Exception is thrown, exits the method
-                            ↓
-                    Spring catches it
-                            ↓
-                    Asks GlobalExceptionHandler: "Can you handle this?"
-                            ↓
-                    GlobalExceptionHandler says: "Yes, I have @ExceptionHandler(DuplicateResourceException.class)"
-                            ↓
-                    Returns {"status":409,"code":"DUPLICATE_RESOURCE","message":"Email already registered",...}
-                            ↓
-                    Spring sends this JSON as HTTP response with status 409
-```
-
-### Without GlobalExceptionHandler
-
-Every controller method would need try-catch:
-
-```java
-// HORRIBLE — repeated in every method
-@PostMapping("/register")
-public ResponseEntity<?> register(...) {
-    try {
-        authService.register(request);
-        return ResponseEntity.status(201).body(...);
-    } catch (DuplicateResourceException e) {
-        return ResponseEntity.status(409).body(...);
-    } catch (BadRequestException e) {
-        return ResponseEntity.status(400).body(...);
-    } catch (Exception e) {
-        return ResponseEntity.status(500).body(...);
-    }
-}
-```
-
-With `@RestControllerAdvice`, ALL controllers get automatic error handling. You throw exceptions in Services, and they're handled in one place.
-
----
-
-## Chapter 10: The DTO Pattern (Data Transfer Objects)
-
-### Why Not Send Entities Directly?
-
-You might think: "Why not just return the User object from the controller?"
-
-```java
-// BAD: Returning entities exposes internal database structure
-@GetMapping("/me")
-public User getProfile() {
-    return user;  // Returns password_hash, pin_hash, deleted status, version... to the mobile app!
-}
-```
-
-**DTOs solve this problem**. A DTO is a class that contains ONLY the data you want to expose.
-
-### Request DTOs (What the CLIENT sends)
-
-```java
-// RegisterRequest.java — Client sends this JSON
-public record RegisterRequest(
-    @NotBlank String firstName,    // Validation happens here
-    @NotBlank String lastName,
-    @Email String email,
-    @NotBlank String phone,
-    @Size(min = 8) String password
+@ConfigurationProperties(prefix = "app.jwt")
+public record JwtProperties(
+    String secret,
+    long expiration
 ) {}
 ```
 
-### Response DTOs (What the SERVER sends back)
+Spring automatically maps `app.jwt.secret` → `JwtProperties.secret()`.
 
-```java
-// AuthResponse.java — Server returns this JSON
-public record AuthResponse(
-    String accessToken,           // Only what the client needs
-    String refreshToken,
-    long expiresIn,
-    UserInfo user                 // Nested DTO — no password hash!
-) {
-    public record UserInfo(
-        String id,
-        String firstName,
-        String lastName,
-        String email,
-        String phone,
-        String role,
-        boolean emailVerified,
-        boolean pinSet              // Just whether PIN is set, not the hash!
-    ) {}
-}
-```
+**Profiles let you have different configs for different environments:**
 
-### The ApiResponse Wrapper
+| Profile | Database | Debug | Used When |
+|---|---|---|---|
+| `dev` | local PostgreSQL | Full logging | Development |
+| `test` | H2 in-memory | Minimal | Testing |
+| `prod` | Production DB | Warnings+errors | Live server |
 
-Every response is wrapped in `ApiResponse<T>`:
+When running tests, Spring reads: `application.yml` + `application-test.yml` (overrides)
+When running in prod, Spring reads: `application.yml` + `application-prod.yml` (overrides)
 
-```java
-public record ApiResponse<T>(
-    boolean success,     // true/false
-    T data,              // The actual response data
-    String message,      // Human-readable message
-    LocalDateTime timestamp  // When the response was generated
-) {
-    public static <T> ApiResponse<T> success(T data, String message) {
-        return new ApiResponse<>(true, data, message, LocalDateTime.now());
-    }
-}
-```
-
-This means ALL responses have the same format:
-
-```json
-// Success
-{"success": true, "data": {...}, "message": "Registration successful", "timestamp": "..."}
-
-// Error
-{"status": 409, "code": "DUPLICATE_RESOURCE", "message": "Email already registered", "path": "/v1/auth/register", "timestamp": "..."}
-```
-
-The mobile app always knows the response structure regardless of which endpoint it calls.
+Each profile only overrides what's different. Common settings stay in `application.yml`.
 
 ---
 
-## Chapter 11: How Testing Works
+### Chapter 11: Security — The Bouncer System
 
-### Unit Tests (AuthServiceTest.java)
+**Analogy:** Security is like a nightclub bouncer system.
 
-Unit tests test ONE class in isolation. All dependencies are mocked (fake).
+```
+Door policy: Anyone can enter the PUBLIC areas  (register, login)
+             Only members can enter the VIP areas  (profile, dashboard)
+             Only managers can enter the BACK OFFICE  (admin endpoints)
+```
+
+**How Spring Security implements this:**
 
 ```java
-@ExtendWith(MockitoExtension.class)         // Enable Mockito
-class AuthServiceTest {
+// SecurityConfig.java
+.authorizeHttpRequests(auth -> auth
+    // PUBLIC — no ID required
+    .requestMatchers("/v1/auth/register", "/v1/auth/login").permitAll()
+    
+    // ADMIN ONLY — must have ADMIN role
+    .requestMatchers("/v1/admin/**").hasRole("ADMIN")
+    
+    // AUTHENTICATED — must have valid JWT
+    .anyRequest().authenticated()
+)
+```
 
-    @Mock
-    private UserRepository userRepository;   // Create a FAKE repository
-    @Mock
-    private WalletRepository walletRepository;
-    @Mock
-    private JwtUtil jwtUtil;
+**The JWT flow step by step:**
 
-    private AuthService authService;         // The REAL service being tested
+```
+1. User logs in → server validates password → server creates JWT
+2. Server returns JWT to client: "Here's your pass. It's good for 15 minutes."
+3. Client stores JWT (in mobile app storage)
+4. Client sends every request with: "Authorization: Bearer <JWT>"
+5. Server reads JWT → validates signature → extracts userId
+6. Server loads user from database
+7. Server processes request as "this user"
+```
 
-    @BeforeEach
-    void setUp() {
-        // Create the real AuthService with fake dependencies
-        authService = new AuthService(
-                userRepository,          // ← fake!
-                walletRepository,        // ← fake!
-                new BCryptPasswordEncoder(),
-                jwtUtil,                 // ← fake!
-                accountNumberGenerator,  // ← real (but has fake walletRepo inside)
-                tokenService             // ← spy
-        );
-    }
+**Why JWT and not sessions?**
 
-    @Test
-    void shouldRegisterUserSuccessfully() {
-        // 1. ARRANGE — Tell mocks what to do
-        when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+Sessions: Server stores login state. "User X is logged in." Memory usage grows with users. Doesn't scale horizontally well.
 
-        // 2. ACT — Call the real method
+JWT: Client proves identity on every request. Server doesn't store anything. "Show me your token, and I'll verify the signature." Scales linearly. No server-side memory.
+
+**JWT is like a signed document:**
+- Only the server can CREATE valid JWTs (it has the secret key)
+- Anyone can READ the JWT (it's base64-encoded, not encrypted)
+- If someone modifies the JWT, the signature won't match → rejected
+- JWTs expire (typically 15 minutes) — even if stolen, they're short-lived
+
+**The JwtAuthFilter:**
+
+This filter runs on every single request (that reaches protected endpoints):
+
+```java
+@Override
+protected void doFilterInternal(HttpServletRequest request,
+                                HttpServletResponse response,
+                                FilterChain filterChain) {
+    
+    // Step 1: Extract token from header
+    String authHeader = request.getHeader("Authorization");
+    // "Bearer eyJhbGciOiJIUzM4NCJ9..."
+    
+    String token = authHeader.substring(7);  // Remove "Bearer "
+    
+    // Step 2: Validate token
+    String userId = jwtUtil.extractUserId(token);
+    
+    // Step 3: Load user
+    UserDetails userDetails = userDetailsService.loadUserById(userId);
+    
+    // Step 4: Create authentication
+    UsernamePasswordAuthenticationToken authentication =
+            new UsernamePasswordAuthenticationToken(
+                    userDetails, null, userDetails.getAuthorities());
+    
+    // Step 5: Store in SecurityContext
+    SecurityContextHolder.getContext().setAuthentication(authentication);
+    
+    // Step 6: Continue the filter chain
+    filterChain.doFilter(request, response);
+}
+```
+
+After this filter runs, every controller method can use `@AuthenticationPrincipal` to get the authenticated user.
+
+---
+
+### Chapter 12: Error Handling — The Safety Net
+
+**Analogy:** Error handling is like a safety net in a circus. If a trapeze artist falls (exception thrown), the net catches them (GlobalExceptionHandler) and prevents injury (ugly error messages shown to user).
+
+**Without a global handler:**
+
+Every controller method would need:
+```java
+@PostMapping("/register")
+public ResponseEntity<?> register(...) {
+    try {
         AuthResponse response = authService.register(request);
-
-        // 3. ASSERT — Check the result
-        assertThat(response.user().email()).isEqualTo("john@example.com");
-        verify(userRepository).save(userCaptor.capture());  // Verify save() was called
+        return ResponseEntity.ok(response);
+    } catch (EmailTakenException e) {
+        return ResponseEntity.status(409).body("Email taken");
+    } catch (InvalidPasswordException e) {
+        return ResponseEntity.status(400).body("Bad password");
+    } catch (Exception e) {
+        return ResponseEntity.status(500).body("Something broke");
+        // ← Stack trace leaks! Inconsistent format!
     }
 }
 ```
 
-**Why mock?** These tests:
-- Run in MILLISECONDS (no database, no HTTP)
-- Don't need PostgreSQL installed
-- Are 100% reliable (no network issues)
-- Test ONLY the business logic, not the infrastructure
+Now repeat for EVERY controller method. You'd have 50+ try-catch blocks.
 
-### Integration Tests (AuthControllerIntegrationTest.java)
-
-Integration tests test the REAL Spring Boot app with a real (test) database:
+**With GlobalExceptionHandler:**
 
 ```java
-@SpringBootTest                               // Start the REAL application
-@AutoConfigureMockMvc                          // Enable fake HTTP client
-@ActiveProfiles("test")                        // Use H2 database (not PostgreSQL)
-class AuthControllerIntegrationTest {
-
-    @Autowired
-    private MockMvc mockMvc;                   // Fake HTTP client
-
-    @Test
-    void register_shouldReturn201AndTokens() throws Exception {
-        // Perform a REAL HTTP request (but in code, not over network)
-        mockMvc.perform(post("/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{"email":"test@test.com","password":"SecurePass123",...}"""))
-                .andExpect(status().isCreated())           // Assert HTTP 201
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.accessToken").isString());
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    // ONE handler for ALL BadRequestExceptions across ALL controllers
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ErrorResponse> handleBadRequest(BadRequestException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(400, "BAD_REQUEST", ex.getMessage(), ...));
+    }
+    
+    // ONE handler for ALL ResourceNotFoundExceptions
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(404, "NOT_FOUND", ex.getMessage(), ...));
+    }
+    
+    // CATCH-ALL — handles anything not specifically handled above
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
+        log.error("Unhandled exception", ex);  // Log stack trace internally
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse(500, "INTERNAL_ERROR", "An unexpected error occurred", ...));
+        // ← Safe message: no stack trace, no internal details
     }
 }
 ```
 
-**The difference:**
+**The flow:**
 
-| Aspect | Unit Test | Integration Test |
+```
+Service throws BadRequestException("Invalid email or password")
+    ↓
+Exception propagates up through Controller
+    ↓
+Spring catches it
+    ↓
+Spring asks: "Who handles BadRequestException?"
+    ↓
+GlobalExceptionHandler: "I do! @ExceptionHandler(BadRequestException.class)"
+    ↓
+Returns ErrorResponse with HTTP 400
+    ↓
+Spring sends this JSON to the client
+```
+
+**The custom exceptions:**
+
+```java
+// These are simple classes that extend RuntimeException
+public class BadRequestException extends RuntimeException {
+    public BadRequestException(String message) {
+        super(message);
+    }
+}
+
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) {
+        super(message);
+    }
+}
+```
+
+They're just named errors so the handler knows which type to catch and what status code to return.
+
+**Good error message vs Bad error message:**
+
+```
+BAD:  "Email null@email.com is already registered, current user id: xyz123"
+      ↑ Leaks internal user IDs and implementation details
+
+GOOD: "Email already registered"
+      ↑ Tells the user what they need to know, nothing more
+```
+
+---
+
+## Part 3: Patterns & Philosophy
+
+---
+
+### Chapter 13: The Patterns We Follow and Why
+
+**Pattern 1: Builder Pattern**
+
+```java
+User.builder()
+    .firstName("John")
+    .lastName("Doe")
+    .email("john@email.com")
+    .passwordHash(encodedPassword)
+    .build();
+```
+
+**Why:** Without Builder, you'd either:
+- Call 10 setters: error-prone (what if you forget `passwordHash`?)
+- Create a constructor with 10 parameters: unreadable (`new User(null, null, "John", "Doe", ...)`)
+
+Builder forces you to name each value and prevents ordering mistakes.
+
+**Pattern 2: Immutable DTOs with Records**
+
+```java
+public record AuthResponse(String accessToken, ...) {}
+```
+
+**Why:** DTOs should never change after creation. Records enforce this. If something needs to change, create a new record. This prevents bugs where you accidentally modify a response object.
+
+**Pattern 3: Static Factory Methods**
+
+```java
+// Instead of:
+new ApiResponse<>(true, data, "Success", LocalDateTime.now())
+
+// We write:
+ApiResponse.success(data, "Success")
+```
+
+**Why:** The method name (`success`) tells you what it does. The constructor call is cryptic (what is that `true`? why `LocalDateTime.now()`?). Named methods are self-documenting.
+
+**Pattern 4: Constructor Injection**
+
+```java
+@Service
+public class AuthService {
+    private final UserRepository userRepository;
+    
+    public AuthService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+}
+```
+
+**Why:** 
+- `final` keyword means the dependency can never be null
+- Constructor shows ALL dependencies at a glance
+- Tests can pass mocks easily
+- No Spring-specific annotations needed (works with plain Java)
+
+**Pattern 5: Single Responsibility per Module**
+
+Each module has ONE job:
+- `auth/` : handles login, register, tokens
+- `user/` : handles profiles
+- `wallet/` : handles wallet data
+- `admin/` : handles admin operations
+
+If you need to change login behavior, you know exactly which folder to open.
+
+---
+
+### Chapter 14: The "Why" Behind Every Major Decision
+
+**Why Java Records for DTOs?**
+
+Java 16 introduced Records specifically for data carriers. Before records, a simple DTO required:
+- A class declaration
+- private fields
+- getters for each field
+- a constructor
+- toString()
+- equals() and hashCode()
+
+That's 40+ lines of boilerplate per DTO. Records reduce it to one line. Less code = fewer bugs.
+
+**Why BCrypt for passwords, not SHA-256?**
+
+SHA-256 is a hash function designed for SPEED. It can hash millions of passwords per second. If a hacker steals your database, they can try billions of passwords per day.
+
+BCrypt is designed to be SLOW. It takes ~100ms to hash one password. That's intentional. A hacker can only try ~10 passwords per second per user. BCrypt is also self-salting (each hash includes a random salt).
+
+**Why UUIDs instead of auto-increment IDs?**
+
+Auto-increment IDs (1, 2, 3...) are:
+- Predictable (user 1 exists, user 2 exists)
+- Guessable (try /api/users/5, /api/users/6...)
+- Problematic in distributed systems (two servers might generate ID 5 at the same time)
+
+UUIDs (70c3c6bc-4c90-4c18-a36e-4e6b8a43540d) are:
+- Random
+- Unguessable
+- Unique across all servers
+- Can be generated on the client side
+
+**Why Soft Delete instead of Hard Delete?**
+
+Hard delete: `DELETE FROM users WHERE id = ?` — data is gone forever.
+
+Soft delete: `UPDATE users SET deleted = true WHERE id = ?` — data is hidden but recoverable.
+
+Soft delete means:
+- You can restore accidentally deleted accounts
+- You can audit: "who deleted this and when?"
+- You keep referential integrity (wallets referencing deleted users won't break)
+- You can query deleted users for analytics
+
+**Why @SQLRestriction instead of WHERE deleted = false everywhere?**
+
+Without `@SQLRestriction`, EVERY repository method would need to add `AND deleted = false`:
+
+```java
+Optional<User> findByEmailAndDeletedFalse(String email);
+List<User> findAllByDeletedFalse();
+```
+
+That's error-prone (one missed method = security hole). `@SQLRestriction` is automatic — you can't forget it.
+
+**Why separate the auth module from the user module?**
+
+Initially, auth and user were one module. Problem:
+- Every time you added a user feature (profile update, avatar), auth was involved
+- Every time you touched auth (login, security), user tests were affected
+- It was unclear what belonged where
+
+Separating them means:
+- Auth only handles: login, register, tokens, security
+- User only handles: profile, preferences, account management
+- You can change how login works without touching user profiles
+
+---
+
+### Chapter 15: How To Think When Adding A New Feature
+
+Here's the mental checklist a senior engineer goes through when adding a feature.
+
+**Example: "Add a feature to change password"**
+
+**Step 1: Which layer does this belong to?**
+
+"Changing password is user-related" → `user/` module. Not `auth/`.
+But... it requires verifying the old password, which is auth-related.
+
+Decision: Put the endpoint in `auth/` since it involves authentication credentials.
+
+**Step 2: What does the client send?**
+
+```java
+public record ChangePasswordRequest(
+    @NotBlank String currentPassword,
+    @Size(min = 8, max = 128) String newPassword
+) {}
+```
+
+Put this in `auth/dto/request/`.
+
+**Step 3: What does the server return?**
+
+```java
+public record MessageResponse(String message) {}
+```
+
+Or we can use `ApiResponse<Void>` — no data, just success message.
+
+**Step 4: What's the business logic (Service)?**
+
+```java
+public void changePassword(UUID userId, ChangePasswordRequest request) {
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    
+    if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+        throw new BadRequestException("Current password is incorrect");
+    }
+    
+    user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+    userRepository.save(user);
+    
+    // Invalidate all existing tokens (force re-login on other devices)
+    refreshTokenRepository.deleteAllByUserId(userId);
+}
+```
+
+**Step 5: What's the endpoint (Controller)?**
+
+```java
+@PutMapping("/password")
+public ResponseEntity<ApiResponse<Void>> changePassword(
+        @Valid @RequestBody ChangePasswordRequest request,
+        @AuthenticationPrincipal UserDetails userDetails
+) {
+    UUID userId = UUID.fromString(userDetails.getUsername());
+    authService.changePassword(userId, request);
+    return ResponseEntity.ok(ApiResponse.success(null, "Password changed successfully. Please login again."));
+}
+```
+
+**Step 6: What's the security rule?**
+
+It's a protected endpoint (requires JWT). Users can only change their own password.
+
+The `@AuthenticationPrincipal` ensures the user is authenticated.
+The service ensures it's the right user (by using the userId from the JWT, not from the request body).
+
+**Step 7: Add to SecurityConfig?**
+
+```java
+.requestMatchers("/v1/auth/password").authenticated()
+```
+
+Already covered by `.anyRequest().authenticated()`.
+
+**Step 8: Error cases to handle?**
+
+- Current password wrong → 400 Bad Request
+- User not found → 404 Not Found (unlikely since JWT was valid)
+- New password same as current → business decision (allow or reject?)
+- Database error → 500 handled by GlobalExceptionHandler
+
+**Step 9: Write tests?**
+
+- Unit test: Mock UserRepository, verify password is updated
+- Unit test: Verify error when current password is wrong
+- Unit test: Verify tokens are invalidated after password change
+
+---
+
+### Chapter 16: Common Mistakes and How to Avoid Them
+
+**Mistake 1: Service calls another Service that calls back (circular dependency)**
+
+```java
+// BAD: Circular dependency
+@Service public class AuthService {
+    private final UserService userService;
+    public AuthService(UserService us) { this.userService = us; }
+}
+@Service public class UserService {
+    private final AuthService authService;
+    public UserService(AuthService as) { this.authService = as; }
+}
+// Spring fails: "Cannot create bean — circular dependency!"
+```
+
+**Fix:** Extract the common code into a third service, or restructure so A → B → C (one direction).
+
+**Mistake 2: Using field injection instead of constructor injection**
+
+```java
+// BAD — field injection
+@Service
+public class AuthService {
+    @Autowired
+    private UserRepository userRepository;
+}
+
+// GOOD — constructor injection
+@Service
+public class AuthService {
+    private final UserRepository userRepository;
+    
+    public AuthService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+}
+```
+
+Field injection hides dependencies (you can't see them in method calls), prevents `final` fields, and makes testing harder.
+
+**Mistake 3: Exposing the entity directly in the API**
+
+```java
+// BAD — password hash leaked!
+@GetMapping("/me")
+public User getProfile() {
+    return user;  // Returns the ENTITY with password_hash!
+}
+```
+
+Always use DTOs. Create a `UserProfileResponse.from(user)` and return that.
+
+**Mistake 4: Forgetting @Transactional on multi-step operations**
+
+```java
+// BAD — if withdraw succeeds but deposit fails, money is lost
+public void transfer(fromId, toId, amount) {
+    walletRepo.deduct(fromId, amount);  // Gets committed immediately
+    walletRepo.add(toId, amount);        // If this fails, the deduction is permanent
+}
+
+// GOOD — everything succeeds together or nothing happens
+@Transactional
+public void transfer(fromId, toId, amount) {
+    walletRepo.deduct(fromId, amount);
+    walletRepo.add(toId, amount);
+}
+```
+
+**Mistake 5: Writing SQL in controllers**
+
+```java
+// BAD — business logic in controller
+@GetMapping("/users/{id}")
+public User getUser(@PathVariable UUID id) {
+    return userRepository.findById(id)  // Controller touching repository!
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    // Also throws Exception class that doesn't match our error format
+}
+```
+
+Controller → Service → Repository. Never skip a layer.
+
+**Mistake 6: Not using logging properly**
+
+```java
+// BAD — no logging
+public void login(request) {
+    if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        throw new BadRequestException("Invalid credentials");
+    }
+}
+// Someone tries to hack into accounts. You have no record of it.
+
+// GOOD — log suspicious activity
+public AuthResponse login(request) {
+    if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        log.warn("Failed login attempt for email: {}", request.email());
+        throw new BadRequestException("Invalid credentials");
+    }
+    log.info("User logged in: {}", user.getId());
+}
+```
+
+**Mistake 7: Hardcoding configuration values**
+
+```java
+// BAD — magic number hidden in code
+public static final int JWT_EXPIRATION = 900000;
+public static final String JWT_SECRET = "my-secret-key";
+
+// GOOD — configurable from application.yml
+@Value("${jwt.expiration}") long expiration;
+@Value("${jwt.secret}") String secret;
+```
+
+Configuration should be in YAML files, not in Java code. This is how you deploy the same code to dev, staging, and production — just change the YAML.
+
+---
+
+## Part 4: Testing & Operations
+
+---
+
+### Chapter 17: How Testing Works (The Wider View)
+
+**Two types of tests, two different purposes:**
+
+| Aspect | Unit Tests | Integration Tests |
 |---|---|---|
-| What's tested | One class | The whole app |
-| Database | Not used (mocked) | H2 in-memory |
+| Tests what? | One class in isolation | The whole app together |
+| Uses database? | No (mocked) | Yes (H2 in-memory) |
 | Speed | Milliseconds | Seconds |
+| Number of tests | Many (covers all edge cases) | Few (covers main flows) |
 | Catches | Logic bugs | Configuration bugs |
-| Reliability | 100% | Depends on test DB state |
+| Runs on every build? | Yes (fast) | Yes (but fewer) |
 
-### The test profile (application-test.yml)
+**Why both? Here's a real example:**
+
+Unit test says: "AuthService.register passes" ✅
+Integration test says: "POST /v1/auth/register returns 201" ❌
+
+Problem? The controller was using `AuthResponse.builder()` but the actual `AuthResponse` class was moved to a different package. The unit test tested service in isolation (never built the full response). The integration test caught it because it went through the real controller.
+
+**Unit tests are for logic. Integration tests are for wiring.**
+
+**The test pyramid:**
+
+```
+        ╱╲
+       ╱  ╲           UI / End-to-End tests (few)
+      ╱    ╲
+     ╱      ╲
+    ╱────────╲
+   ╱          ╲        Integration tests (some)
+  ╱────────────╲
+ ╱              ╲
+╱────────────────╲     Unit tests (many — 80% of tests)
+```
+
+**Mocking in unit tests:**
+
+```java
+// AuthServiceTest.java
+@Mock
+private UserRepository userRepository;     // ← Fake DB
+
+@InjectMocks
+private AuthService authService;            // ← Real service with fake DB
+
+@Test
+void register_shouldFail_whenEmailExists() {
+    // Arrange: Tell the fake DB to return "email exists"
+    when(userRepository.existsByEmail("taken@email.com")).thenReturn(true);
+    
+    // Act: Try to register
+    assertThrows(BadRequestException.class, () -> {
+        authService.register(new RegisterRequest(..., "taken@email.com", ...));
+    });
+    
+    // Assert: Verify error was thrown
+    verify(userRepository).existsByEmail("taken@email.com");
+}
+```
+
+This test:
+- Runs in 2 milliseconds
+- Doesn't need PostgreSQL
+- Doesn't need any database setup
+- Tests ONLY the duplicate email check logic
+
+**H2 database in integration tests:**
 
 ```yaml
+# application-test.yml
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb;MODE=PostgreSQL  # H2 database that speaks "PostgreSQL"
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL
 ```
 
-H2 is an in-memory database that emulates PostgreSQL. Every test run starts with a FRESH database. No leftover data from previous test runs.
+H2 is an in-memory database that can emulate PostgreSQL syntax. Every test run starts with a clean database — no data pollution from previous runs.
 
----
-
-## Chapter 12: Walk Through An Entire Feature
-
-Let's trace the PIN verification feature end-to-end to see how everything connects.
-
-### 1. The Request
-
-```
-POST /api/v1/auth/pin
-Authorization: Bearer eyJhbGciOiJIUzM4NC...
-Content-Type: application/json
-
-{"pin": "1234"}
-```
-
-### 2. Tomcat receives it
-
-```
-Raw TCP data → HTTP request → Spring's DispatcherServlet
-```
-
-### 3. Security check (SecurityConfig + JwtAuthFilter)
-
-```
-DispatcherServlet asks: "Is this request authenticated?"
-JwtAuthFilter says: "Let me check the Authorization header..."
-    → Extracts "eyJhbGciOiJIUzM4NC..." from "Bearer eyJhbGciOiJIUzM4NC..."
-    → Decodes JWT, verifies signature
-    → Extracts userId from the "sub" (subject) field
-    → Loads user from database: CustomUserDetailsService.loadUserById(userId)
-    → Creates Authentication object
-    → Stores in SecurityContext
-    → "Request is authenticated as user 70c3c6bc-4c90-4c18-a36e-4e6b8a43540d"
-```
-
-### 4. Controller receives it (AuthController)
+**The `@ActiveProfiles("test")` annotation:**
 
 ```java
-@PostMapping("/pin")
-public ResponseEntity<ApiResponse<Void>> setPin(
-        @Valid @RequestBody SetPinRequest request,     // Validates PIN format (4-6 digits)
-        @AuthenticationPrincipal UserDetails userDetails  // Gets authenticated user
-) {
-    UUID userId = UUID.fromString(userDetails.getUsername());  // "70c3c6bc-..."
-    authService.setPin(userId, request.pin());
-    return ResponseEntity.ok(ApiResponse.success(null, "PIN set successfully"));
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")    // ← Use application-test.yml settings
+class AuthControllerIntegrationTest {
+    // Tests run with H2 database, not PostgreSQL
 }
-```
-
-### 5. Service processes it (AuthService)
-
-```java
-public void setPin(UUID userId, String pin) {
-    // Find user in database
-    User user = userRepository.findById(userId)  // SELECT * FROM users WHERE id = ?
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-    // Check if PIN is locked
-    if (isPinLocked(user)) {
-        throw new BadRequestException("PIN is locked until " + user.getPinLockedUntil());
-    }
-
-    // Hash the PIN and save
-    user.setPinHash(passwordEncoder.encode(pin));  // BCrypt hash — never store raw PIN!
-    user.setPinAttempts(0);                         // Reset failed attempts
-    user.setPinLockedUntil(null);                   // Clear lockout
-    userRepository.save(user);                      // UPDATE users SET pin_hash = ? WHERE id = ?
-}
-```
-
-### 6. Response flows back
-
-```
-AuthService returns void
-    → AuthController wraps in ApiResponse.success(null, "PIN set successfully")
-        → Spring converts to JSON: {"success":true,"data":null,"message":"PIN set successfully","timestamp":"..."}
-            → DispatcherServlet sends HTTP 200 with this JSON
-                → Mobile app receives the response
-```
-
-### 7. What happens if there's an error?
-
-**Case: PIN is locked**
-```
-AuthService.setPin() throws BadRequestException("PIN is locked until...")
-    → Exception exits the method immediately
-        → Spring catches it
-            → GlobalExceptionHandler.handleBadRequest() returns:
-                {"status":400,"code":"BAD_REQUEST","message":"PIN is locked until 2026-07-10T14:00:00"}
-                    → HTTP 400 response sent to mobile app
-```
-
-**Case: Database is down**
-```
-UserRepository.findById() throws DataAccessException
-    → Not caught by AuthService
-        → Not caught by AuthController
-            → Caught by GlobalExceptionHandler.handleGeneralException()
-                → Logs full stack trace
-                    → Returns: {"status":500,"code":"INTERNAL_SERVER_ERROR","message":"An unexpected error occurred"}
 ```
 
 ---
 
-## Chapter 13: Common Patterns in This Project
+### Chapter 18: The Build Pipeline (Code to Running App)
 
-### Pattern 1: Builder Pattern (User.java)
+**What happens when you run `mvn clean install`?**
 
-```java
-User user = User.builder()          // Instead of calling setters 10 times
-        .firstName("John")
-        .lastName("Doe")
-        .email("john@example.com")
-        .phone("+260971234567")
-        .passwordHash(passwordEncoder.encode("SecurePass123"))
-        .build();
+```
+clean: Delete target/ directory (remove old compiled files)
+  │
+compile: Read all .java files, compile to .class files
+  │
+process-resources: Copy application.yml to target/
+  │
+process-test-resources: Copy application-test.yml to target/test-classes/
+  │
+test-compile: Compile test files (*Test.java)
+  │
+test: Run all @Test methods
+  ├── If ANY test fails → BUILD FAILS (stop here)
+  │
+package: Bundle everything into a .jar file
+  │
+install: Copy .jar to local Maven repository (for other projects to use)
 ```
 
-Without Builder, you'd write:
-```java
-User user = new User();
-user.setFirstName("John");
-user.setLastName("Doe");
-user.setEmail("john@example.com");
-user.setPhone("+260971234567");
-user.setPasswordHash(passwordEncoder.encode("SecurePass123"));
-```
-
-Builder is cleaner and prevents errors (can't forget to set a field).
-
-### Pattern 2: Static Factory Method (ApiResponse.java)
-
-```java
-// Instead of: new ApiResponse<>(true, data, "message", LocalDateTime.now())
-ApiResponse.success(data, "message")  // Cleaner, less error-prone
-```
-
-### Pattern 3: `from()` Method on DTOs (UserProfileResponse.java)
-
-```java
-public record UserProfileResponse(...) {
-    public static UserProfileResponse from(User user) {  // Converts Entity → DTO
-        return new UserProfileResponse(
-                user.getId().toString(),
-                user.getFirstName(),
-                user.getLastName(),
-                user.getEmail(),
-                ...
-        );
-    }
-}
-```
-
-Usage:
-```java
-return UserProfileResponse.from(user);  // Clean one-liner
-```
-
-### Pattern 4: Record for DTOs
-
-```java
-// Old way (100 lines of boilerplate)
-public class RegisterRequest {
-    private String email;
-    private String password;
-    // getters, setters, toString, equals, hashCode — 100 lines
-}
-
-// New way (1 line)
-public record RegisterRequest(String email, String password) {}
-// Java automatically generates: constructor, getters, toString, equals, hashCode
-```
-
-### Pattern 5: SLF4J Logging
-
-```java
-private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-
-log.info("User registered: {} (id={})", user.getEmail(), user.getId());
-log.warn("Failed login attempt for email: {}", request.email());
-log.error("Unhandled exception", exception);  // Second arg = stack trace
-```
-
-Log levels: `ERROR` (bad), `WARN` (suspicious), `INFO` (normal), `DEBUG` (verbose), `TRACE` (too verbose)
-
----
-
-## Chapter 14: The `pom.xml` — What Each Dependency Does
+**The pom.xml is the instruction manual:**
 
 ```xml
-<!-- Web server + REST APIs -->
-<artifactId>spring-boot-starter-web</artifactId>
-<!-- Gives you: Tomcat, DispatcherServlet, @RestController, @RequestMapping, etc. -->
-
-<!-- Database access -->
-<artifactId>spring-boot-starter-data-jpa</artifactId>
-<!-- Gives you: JPA, Hibernate, @Entity, JpaRepository, @Transactional -->
-
-<!-- Input validation -->
-<artifactId>spring-boot-starter-validation</artifactId>
-<!-- Gives you: @Valid, @NotBlank, @Email, @Size, @Pattern -->
-
-<!-- Security -->
-<artifactId>spring-boot-starter-security</artifactId>
-<!-- Gives you: @EnableWebSecurity, SecurityFilterChain, @AuthenticationPrincipal -->
-
-<!-- Database driver -->
-<artifactId>postgresql</artifactId>
-<!-- Gives you: ability to connect to PostgreSQL -->
-
-<!-- Database migrations -->
-<artifactId>flyway-core</artifactId>
-<artifactId>flyway-database-postgresql</artifactId>
-<!-- Gives you: V1__.sql, V2__.sql — automatically run on startup -->
-
-<!-- API documentation -->
-<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-<!-- Gives you: /swagger-ui.html, /api-docs -->
-
-<!-- JWT tokens -->
-<artifactId>jjwt-api</artifactId>
-<artifactId>jjwt-impl</artifactId>
-<artifactId>jjwt-jackson</artifactId>
-<!-- Gives you: Jwts.builder(), Jwts.parser() for JWT creation/validation -->
-
-<!-- Testing -->
-<artifactId>spring-boot-starter-test</artifactId>
-<artifactId>h2</artifactId>          <!-- ← Added for integration tests -->
-<!-- Gives you: @SpringBootTest, MockMvc, @Mock, JUnit 5 -->
-
-<!-- Boilerplate reduction -->
-<artifactId>lombok</artifactId>
-<!-- Gives you: @Getter, @Setter, @Builder, @NoArgsConstructor — less code -->
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.4.4</version>
+</parent>
 ```
 
----
+This means: "Use Spring Boot 3.4.4 as my foundation. I get its default settings, dependency versions, and plugins."
 
-## Chapter 15: The Security Checklist
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+```
 
-Before deploying any Spring Boot app, verify:
+This means: "I need to build a web API. Give me Tomcat, Jackson, DispatcherServlet, and everything else."
 
-### 1. Are passwords hashed?
-✅ Done — `passwordEncoder.encode(password)` uses BCrypt (PasswordConfig.java)
+Each starter is a curated set of dependencies that work together. `spring-boot-starter-web` pulls in 15+ transitive dependencies (Tomcat, Jackson, Spring MVC, etc.) — all version-compatible, all tested together.
 
-### 2. Are secrets externalized?
-✅ Done — `JWT_SECRET` and `JWT_EXPIRATION` use `${ENV_VAR:default}` pattern
+**The final JAR contains:**
 
-### 3. Is CSRF disabled correctly?
-✅ Done — we use JWT (stateless), so CSRF is disabled
+```
+novawallet-api-0.0.1-SNAPSHOT.jar
+├── BOOT-INF/
+│   ├── classes/            ← Your compiled code + resources
+│   │   ├── com/novawallet/.../*.class
+│   │   └── application.yml
+│   └── lib/                ← All dependencies (Tomcat, Spring, etc.)
+│       ├── spring-boot-*.jar
+│       ├── tomcat-embed-*.jar
+│       ├── postgresql-*.jar
+│       └── ... (50+ JAR files)
+├── META-INF/
+└── org.springframework.boot.loader/  ← Spring Boot loader
+```
 
-### 4. Are validation rules defined?
-✅ Done — every DTO has `@NotBlank, @Size, @Email, @Pattern`
-
-### 5. Are error messages safe?
-✅ Done — never exposes stack traces, never reveals "email not found" vs "wrong password"
-
-### 6. Is rate limiting implemented?
-✅ Done for PIN (3 attempts = 15-min lockout)
-
-### 7. Are deleted users hidden?
-✅ Done — `@SQLRestriction("deleted = false")`
-
-### 8. Are tokens revocable?
-✅ Done — refresh tokens can be revoked, all tokens revoked on password reset
-
----
-
-## Chapter 16: Quick Exercises to Test Understanding
-
-### Beginner
-1. **Find where the password is hashed** — search for `passwordEncoder.encode(` in AuthService.java
-2. **Find where validation fails** — send a bad request via Swagger and trace the error
-3. **Find where the JWT secret is configured** — check application.yml and JwtUtil constructor
-4. **Change the API to run on port 9090** — edit application.yml (server.port)
-
-### Intermediate
-5. **Add a new field to User** — add `@Column String nationality` to User.java AND add `nationality VARCHAR(255)` to V2 migration
-6. **Create a new endpoint** `GET /v1/users/me/email` that returns just the email
-7. **Add logging to UserService** — log every profile update with old and new values
-
-### Advanced
-8. **Add a scheduled job** that deletes expired refresh tokens every hour
-9. **Add a custom validator** `@StrongPassword` that requires uppercase, lowercase, number, and special char
-10. **Add pagination to admin users list** — use Spring Data's `Pageable`
+This is a FAT JAR — it contains everything needed to run. No external Tomcat, no external dependencies. Just `java -jar novawallet-api-0.0.1-SNAPSHOT.jar` and it runs.
 
 ---
 
-## Final Advice
+## What's Next
 
-**You don't learn Spring Boot by reading. You learn by breaking things.**
+This project will grow with new phases. Each phase will add:
 
-1. Change something → run the app → see it break → fix it → understand what happened
-2. Add a new endpoint from scratch (start with controller, add service, add repository method)
-3. Read the errors — Spring Boot gives excellent error messages with suggested fixes
+- **New modules** (transactions, notifications, payments...)
+- **New patterns** (caching, messaging, scheduled jobs...)
+- **New Spring features** (Redis, RabbitMQ, WebSockets...)
 
-**The learning order that works:**
-1. First: REST controllers + services (30% of the code, 70% of what you'll write)
-2. Then: JPA/entities (20% of the code, tedious but important)
-3. Then: Security (10% of the code, hardest to debug)
-4. Then: Configuration, testing, error handling (40% of the code, makes your app production-ready)
+After each phase, this guide gets a new chapter explaining what was built, why it was built that way, and how it connects to everything else.
 
-Every concept in this guide is visible in this project. Open the files, read them side by side with this guide, and you'll see exactly how each piece works.
+**The goal:** By Phase 8, you'll have a complete Spring Boot education — from `@RestController` to distributed tracing — all from code you actually built.
+
+---
+
+> **Remember:** Reading about Spring Boot teaches you concepts. Breaking things teaches you understanding. Every bug you fix makes you a better developer. Every feature you add makes the patterns click.

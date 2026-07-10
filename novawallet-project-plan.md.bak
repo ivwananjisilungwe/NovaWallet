@@ -1,0 +1,483 @@
+# NovaWallet — Project Plan
+
+## Overview
+
+| **Project** | NovaWallet |
+|-------------|-----------|
+| **Purpose** | Digital wallet backend API (RESTful, no frontend in MVP) |
+| **Stack** | Java 17, Spring Boot 4.1, Maven, PostgreSQL, Flyway, JWT (jjwt), SpringDoc OpenAPI |
+| **Target** | University students & small businesses in Zambia |
+| **Status** | Scaffold created — bare `pom.xml`, no business logic yet |
+
+---
+
+## Phase 0 — Project Foundation
+**Goal**: Build out the dependency graph, base configuration, project packaging, and code standards.
+
+| Step | Task | Details |
+|------|------|---------|
+| 0.1 | **Expand `pom.xml`** | Add missing dependencies: `spring-boot-starter-security`, `spring-boot-starter-actuator`, `spring-boot-starter-cache`, `spring-boot-starter-mail`, `jjwt-api/impl/jackson` (0.12.x), `springdoc-openapi-starter-webmvc-ui` (2.x), `h2` (test scope), `caffeine` (cache), `lombok` (already present), `spring-boot-starter-web` (use webmvc) |
+| 0.2 | **Multi-profile config** | `application.yml` base + `application-dev.yml` (H2, auto-DDL) + `application-prod.yml` (PostgreSQL, flyway validate) |
+| 0.3 | **Base package structure** | `com.novawallet` root with sub-packages: `config`, `entity`, `dto`, `repository`, `service`, `controller`, `security`, `exception`, `audit`, `scheduler` |
+| 0.4 | **Global exception handler** | `@RestControllerAdvice` — uniform error response: `{status, code, message, timestamp, path}` |
+| 0.5 | **Standard API response wrapper** | `ApiResponse<T>` envelope: `{success, data, message, timestamp}` for all successful responses |
+| 0.6 | **Flyway baseline migration** | `V1__init_schema.sql` — create initial tables |
+| 0.7 | **Security headers filter** | HSTS, X-Content-Type-Options, X-Frame-Options, CSP (basic) via `SecurityFilterChain` |
+| 0.8 | **Health check verification** | `/actuator/health` and `/actuator/info` working |
+| 0.9 | **Swagger/OpenAPI config** | `/swagger-ui.html` + `api-docs` endpoint with security scheme defined |
+| 0.10 | **MDC request tracing** | Add `MDC` filter to inject `X-Request-ID` (or `trace-id`) into every log line |
+
+**Deliverable**: Application boots, serves Swagger UI, actuator health, and returns consistent JSON error format.
+
+---
+
+## Phase 1 — User & Authentication Core
+**Goal**: Register, login, JWT issuance, wallet creation on signup, transaction PIN setup.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 1.1 | Entity | **User entity** | `id (UUID)`, `firstName`, `lastName`, `email` (unique), `phone` (unique), `passwordHash`, `pinHash`, `pinAttempts`, `pinLockedUntil`, `role` (USER/ADMIN), `emailVerified` (boolean), `verificationToken`, `passwordResetToken`, `passwordResetExpiresAt`, `deleted` (boolean), `deletedAt`, `createdAt`, `updatedAt`, `@Version` |
+| 1.2 | Entity | **Role enum** | `USER`, `ADMIN` |
+| 1.3 | Entity | **Wallet entity** | `id (UUID)`, `userId`, `accountNumber` ("NW" + 10 digits), `balance` (BigDecimal scale=2), `currency` ("ZMW"), `status` (ACTIVE/FROZEN), `freezeReason` enum (SUSPICIOUS_ACTIVITY/ADMIN_ACTION/USER_REQUEST/null), `@Version`, `createdAt`, `updatedAt` |
+| 1.4 | Entity | **RefreshToken entity** | `id (UUID)`, `userId`, `tokenHash`, `expiresAt`, `createdAt`, `revoked` (boolean) |
+| 1.5 | Migration | **Flyway V1..V3** | `V1__create_users_table.sql`, `V2__create_wallets_table.sql`, `V3__create_refresh_tokens_table.sql` |
+| 1.6 | Security | **JWT utility** | Generate + validate access tokens (jjwt), configurable expiry (default 15 min), secret from `application.yml` |
+| 1.7 | Security | **Spring Security config** | `SecurityFilterChain` — permit `/api/v1/auth/**`, `/swagger-ui/**`, `/api-docs/**`, `/actuator/**`; all else authenticated; stateless session; `BCryptPasswordEncoder` bean |
+| 1.8 | Security | **JWT auth filter** | `OncePerRequestFilter` — extract JWT from `Authorization: Bearer <token>`, validate, set `SecurityContextHolder` |
+| 1.9 | DTO | **Auth DTOs** | `RegisterRequest`, `LoginRequest`, `AuthResponse` (accessToken, refreshToken, expiresIn), `ApiResponse<T>` |
+| 1.10 | Service | **AuthService** | `register()` — validate uniqueness, hash password, create User, create Wallet (with generated account number), issue tokens; `login()` — verify credentials, issue tokens |
+| 1.11 | Service | **Wallet generation** | `AccountNumberGenerator` — atomic sequence-based "NW" + 10-digit zero-padded number, retry on collision |
+| 1.12 | Controller | **AuthController** | `POST /api/v1/auth/register`, `POST /api/v1/auth/login` |
+| 1.13 | Enhancement | **Set transaction PIN** | `POST /api/v1/auth/pin` — authenticated, accepts 4-6 digit PIN, BCrypt hashed, stored on User |
+| 1.14 | Enhancement | **PIN rate limiting** | Track `pinAttempts`, `pinLockedUntil` — lock for 15 min after 3 failed attempts |
+| 1.15 | Enhancement | **Email verification** | On register, generate `verificationToken`, send email (or log for dev); `GET /api/v1/auth/verify?token=...` marks `emailVerified=true` |
+| 1.16 | Enhancement | **Password reset** | `POST /api/v1/auth/forgot-password` → email link; `POST /api/v1/auth/reset-password` with token + new password |
+| 1.17 | Test | **AuthService unit tests** | Mock repository, verify password hashing, token issuance, validation errors |
+| 1.18 | Test | **AuthController integration tests** | Full request/response cycle with H2 |
+
+**Deliverable**: Register + login with JWT working. Wallet auto-created. PIN set + verified. Email verification + password reset flows functional.
+
+---
+
+## Phase 1.5 — KYC & Identity Verification ⬅️ NEW
+**Goal**: Tiered KYC verification with document upload, face matching, AML screening, and automated tier upgrades.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 1.5.1 | Entity | **KycDocument entity** | `id (UUID)`, `userId`, `documentType` (NRC_FRONT/NRC_BACK/PASSPORT/SELFIE/PROOF_OF_ADDRESS), `verificationStatus` (NOT_SUBMITTED/PENDING/APPROVED/REJECTED), `fileUrl` (encrypted S3 path), `fileHash` (SHA-256), `rejectionReason`, `providerReference`, `providerResponse` (JSON), `verifiedAt`, `expiresAt`, `createdAt`, `updatedAt` |
+| 1.5.2 | Entity | **KycTier entity** | `id (UUID)`, `userId`, `currentTier` (NONE/TIER_1/TIER_2/TIER_3), `maxBalance` (BigDecimal), `dailyTransferLimit`, `dailyDepositLimit`, `lastTierUpgradeAt`, `upgradedBy` (nullable admin UUID), `createdAt`, `updatedAt` |
+| 1.5.3 | Entity | **KycTier enum** | `NONE`, `TIER_1`, `TIER_2`, `TIER_3` |
+| 1.5.4 | Migration | **Flyway V11, V12** | `V11__create_kyc_documents_table.sql`, `V12__create_kyc_tiers_table.sql` |
+| 1.5.5 | Service | **KycService** | `submitDocument(userId, documentType, file)` — validate file type/size, encrypt file, upload to S3, create KycDocument (PENDING), call KYC provider for verification; `getKycStatus(userId)` — return current tier + document statuses; `upgradeTier(userId, newTier)` — called on verification success, enforces one-directional upgrade |
+| 1.5.6 | Service | **KycProviderClient** | Interface for provider abstraction: `verifyIdentity(userId, documents)` → `VerificationResult`. Implementations: `SmileIdClient`, `DojahClient`, `IdentityPassClient`. Configurable via `application.yml` |
+| 1.5.7 | Service | **KycLimitEnforcer** | `validateTransactionLimit(userId, amount, type)` — checks current KYC tier against daily limits, throws `KycLimitExceededException` if exceeded. Called by TransactionService before processing. `validateBalanceCap(walletId, newBalance)` — checks against KYC tier max balance cap |
+| 1.5.8 | Controller | **KycController** | `POST /api/v1/kyc/documents` (upload, multipart), `GET /api/v1/kyc/status` (current tier + docs), `POST /api/v1/kyc/submit` (trigger verification for submitted docs) |
+| 1.5.9 | Controller | **Admin KYC endpoints** | `GET /api/v1/admin/kyc/pending` (list pending docs), `POST /api/v1/admin/kyc/{docId}/approve`, `POST /api/v1/admin/kyc/{docId}/reject` (with reason), `POST /api/v1/admin/kyc/users/{userId}/downgrade` (compliance downgrade) |
+| 1.5.10 | Integration | **File storage** | AWS S3 or MinIO (dev) for encrypted document storage. Generate pre-signed URLs for document viewing (time-limited). AES-256 server-side encryption |
+| 1.5.11 | Integration | **AML screening** | On Tier 2+ upgrade, check user identity against sanctions/PEP lists via KYC provider or separate AML API |
+| 1.5.12 | Integration | **KYC callback/webhook** | Provider sends async verification result → `POST /api/v1/webhooks/kyc` → update document status + tier upgrade if approved |
+| 1.5.13 | DTO | **KYC DTOs** | `KycDocumentResponse`, `KycStatusResponse`, `KycSubmitResponse`, `KycDocumentUploadRequest` (multipart) |
+| 1.5.14 | Security | **KYC limits wired into transactions** | Modify `TransactionService` deposit/withdraw/transfer to call `KycLimitEnforcer` before processing; modify wallet balance update to check `KycLimitEnforcer.validateBalanceCap` |
+| 1.5.15 | Enhancement | **Selfie + NRC face match** | On Tier 2 submission, send selfie + NRC to provider for liveness check and face comparison. Provider returns match score (threshold: >80%) |
+| 1.5.16 | Test | **KYC service tests** | Document upload, provider integration (mock), tier upgrade logic, limit enforcement |
+| 1.5.17 | Test | **KYC limit enforcement tests** | Verify daily limit exceeded returns 403, balance cap enforced, tier upgrade one-directional |
+
+**Deliverable**: Multi-tier KYC with document upload, provider verification, AML screening, face matching. Transaction limits enforced by KYC tier. Admin approval/rejection workflow.
+
+### KYC Balance & Transaction Limits Matrix
+
+| Tier | Max Balance | Daily Transfer Out | Daily Deposit In | Features |
+|------|-------------|-------------------|------------------|----------|
+| NONE | ZMW 0 | ZMW 0 | ZMW 0 | Read-only profile |
+| TIER_1 | ZMW 5,000 | ZMW 1,000 | ZMW 2,500 | P2P transfers only |
+| TIER_2 | ZMW 50,000 | ZMW 10,000 | ZMW 25,000 | Flutterwave, Virtual Cards |
+| TIER_3 | ZMW 500,000+ | ZMW 100,000 | ZMW 250,000 | Full features, mass payouts |
+
+---
+
+## Phase 2 — Transaction Core
+**Goal**: Deposit, withdraw, transfer with atomicity, PIN validation, ledger-style records, and human-friendly transaction references.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 2.1 | Entity | **Transaction entity** | `id (UUID)`, `reference` ("NWTX" + yyyyMMdd + 8-digit sequence), `type` (DEPOSIT/WITHDRAWAL/TRANSFER_DEBIT/TRANSFER_CREDIT/FEE), `amount` (BigDecimal), `balanceBefore`, `balanceAfter`, `status` (PENDING/SUCCESSFUL/FAILED), `description`, `senderWalletId`, `receiverWalletId`, `relatedTransactionId` (for linking debit/credit pairs), `createdAt`, `updatedAt`, `@Version` |
+| 2.2 | Migration | **Flyway V4** | `V4__create_transactions_table.sql` |
+| 2.3 | DTO | **Transaction DTOs** | `DepositRequest`, `WithdrawRequest`, `TransferRequest`, `TransactionResponse`, `TransactionReference` |
+| 2.4 | Service | **Deposit** | `deposit(walletId, amount, description)` — find wallet (active), validate amount > 0, check KYC balance cap, increment balance via `@Transactional`, create DEPOSIT record (SUCCESSFUL), record balanceBefore/balanceAfter |
+| 2.5 | Service | **Withdraw** | `withdraw(walletId, amount, pin, description)` — verify PIN, check KYC daily limit, validate balance >= amount, decrement balance, create WITHDRAWAL record |
+| 2.6 | Service | **Transfer** | `transfer(senderWalletId, receiverWalletId, amount, pin, description)` — verify PIN, check KYC daily limit, validate not self-transfer, check balance >= amount, validate receiver exists and active, debit sender, credit receiver, create TRANSFER_DEBIT + TRANSFER_CREDIT pair linked by `relatedTransactionId` |
+| 2.7 | Service | **Reference generator** | `TransactionReferenceGenerator` — atomic sequence: `NWTX{yyyyMMdd}{00000001}` format, safe under concurrent access |
+| 2.8 | Service | **Balance integrity** | Wallet balance = sum of all balance changes from transaction records (ledger-first mental model). Updates use `UPDATE wallets SET balance = balance + ? WHERE id = ? AND balance + ? >= 0` (optimistic lock fallback) |
+| 2.9 | Controller | **TransactionController** | `POST /api/v1/wallets/{walletId}/deposit`, `POST /api/v1/wallets/{walletId}/withdraw`, `POST /api/v1/transfers` |
+| 2.10 | Validation | **Input validation** | `@Positive` amount, `@NotBlank` descriptions, `@Size(min=4, max=6)` PIN, `@NotNull` wallet IDs |
+| 2.11 | Audit | **Balance change audit** | Every deposit/withdraw/transfer writes async audit log entry (entityType=WALLET, action=DEPOSIT/WITHDRAWAL/TRANSFER_DEBIT/TRANSFER_CREDIT, oldBalance, newBalance, performedBy=userId, IP) |
+| 2.12 | Test | **TransactionService unit tests** | Mock wallet repo, verify balance changes, PIN validation, constraint enforcement |
+| 2.13 | Test | **TransactionController integration tests** | Full deposit/withdraw/transfer cycles with H2, verify DB state after each |
+
+**Deliverable**: Money moves through the system atomically. Deposits, withdrawals, and transfers create proper ledger trail. Transaction references are human-friendly. All operations enforce KYC limits.
+
+---
+
+## Phase 3 — Transaction History & Querying
+**Goal**: List transactions with filtering, pagination, and sorting. Users see their own history only.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 3.1 | Repository | **TransactionRepository** | Spring Data JPA with `Specification` for dynamic filtering |
+| 3.2 | Service | **TransactionHistoryService** | `getTransactionHistory(walletId, pageable, filters)` — type filter, date range, status filter, paginated, sorted by createdAt desc |
+| 3.3 | DTO | **Paged response** | `PagedResponse<T>` — `{content, page, size, totalElements, totalPages, last}` |
+| 3.4 | Controller | **History endpoint** | `GET /api/v1/wallets/{walletId}/transactions` — query params: `type`, `status`, `from`, `to`, `page`, `size`, `sort` |
+| 3.5 | Security | **Ownership check** | Users can only see their own wallet's transactions (AOP or manual check) |
+| 3.6 | Enhancement | **Single transaction lookup** | `GET /api/v1/transactions/{reference}` — public-ish, user must own at least one of the involved wallets |
+| 3.7 | Enhancement | **Wallet balance endpoint** | `GET /api/v1/wallets/{walletId}/balance` — returns current balance with currency |
+| 3.8 | Test | **History service tests** | Pagination, filtering, ownership edge cases |
+
+**Deliverable**: Full read-side of the transaction system with pagination and filtering.
+
+---
+
+## Phase 4 — Fee Engine & Audit Logging
+**Goal**: Configurable fee calculation per transaction type. Audit log for all balance changes.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 4.1 | Entity | **FeeConfiguration entity** | `id`, `transactionType` (TRANSFER/WITHDRAWAL/DEPOSIT), `percentageFee` (BigDecimal), `flatFee` (BigDecimal), `minFee`, `maxFee`, `active` (boolean), `createdAt`, `updatedAt` |
+| 4.2 | Migration | **Flyway V5, V6** | `V5__create_fee_configurations_table.sql`, `V6__create_audit_logs_table.sql` |
+| 4.3 | Entity | **AuditLog entity** | `id (UUID)`, `entityType` (string), `entityId` (UUID), `action` (string), `oldValue` (text), `newValue` (text), `performedBy` (UUID), `ipAddress` (string), `createdAt` (timestamp) — **append-only**, no update/delete operations |
+| 4.4 | Service | **FeeEngineService** | `calculateFee(transactionType, amount)` — loads active config, computes: `totalFee = (amount * percentageFee / 100) + flatFee`, clamped by min/max, rounded to 2 decimals HALF_EVEN |
+| 4.5 | Service | **Fee deduction** | Modify transfer flow to deduct fee from sender's wallet and create FEE transaction record linked to transfer |
+| 4.6 | Controller | **Fee estimation** | `GET /api/v1/fees/estimate?type=TRANSFER&amount=100.00` — read-only, no auth required (or lightweight auth) |
+| 4.7 | Service | **AuditService** | `recordAction(entityType, entityId, action, oldValue, newValue, performedBy, ipAddress)` — `@Async` (non-blocking), returns `CompletableFuture<Void>` |
+| 4.8 | AOP | **Audit annotation** | `@Audited(action="DEPOSIT")` — optional AOP aspect that auto-captures method params for balance changes |
+| 4.9 | Controller | **Admin fee config** | `GET/PUT /api/v1/admin/fees/{id}` — ADMIN-only CRUD for fee configurations |
+| 4.10 | Test | **FeeEngine tests** | Percentage + flat, rounding, min/max clamping, inactive config fallback |
+| 4.11 | Test | **AuditService tests** | Verify async behavior, data capture |
+
+**Deliverable**: Fees calculated and deducted on transfers. Audit log recording every balance change asynchronously.
+
+---
+
+## Phase 5 — Refresh Token Rotation, Rate Limiting & Idempotency
+**Goal**: Production-grade auth security, API protection, and duplicate charge prevention.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 5.1 | Service | **Refresh token rotation** | `refreshAccessToken(refreshToken)` — hash incoming token, match DB, check expiry + not revoked, issue new access + new refresh, revoke old refresh; if token already revoked (stolen detection) → revoke ALL tokens for user |
+| 5.2 | Controller | **Refresh endpoint** | `POST /api/v1/auth/refresh` — accepts `refreshToken` in body, returns new `AuthResponse` |
+| 5.3 | Service | **Logout / revoke** | `POST /api/v1/auth/logout` — revoke current refresh token; `POST /api/v1/auth/logout-all` — revoke all user tokens |
+| 5.4 | Entity | **IdempotencyKey entity** | `id`, `key` (unique), `responseBody` (text/JSON), `responseStatusCode` (int), `expiresAt` (createdAt + 24h) |
+| 5.5 | Migration | **Flyway V7, V8** | `V7__create_idempotency_keys_table.sql`, `V8__idempotency_index.sql` |
+| 5.6 | Filter | **IdempotencyFilter** | `OncePerRequestFilter` — extract `Idempotency-Key` header for POST/PATCH to financial endpoints; if key exists → return cached response; else proceed + cache after successful completion |
+| 5.7 | Filter | **RateLimitingFilter** | Token-bucket algorithm per user (authenticated) or per IP (unauthenticated). Configurable limits. Default: 100 req/min per user, 10 req/min for auth endpoints |
+| 5.8 | Headers | **Rate limit response headers** | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` on every response via `OncePerRequestFilter` |
+| 5.9 | Error | **429 response** | `RateLimitExceededException` → `Retry-After` header + standard error JSON |
+| 5.10 | Test | **Refresh token rotation tests** | Happy path, expired token, stolen token detection (reuse), all-tokens-revoked scenario |
+| 5.11 | Test | **Rate limiting tests** | Token bucket consumption, refill, header accuracy, 429 beyond limit |
+
+**Deliverable**: Refresh token rotation with theft detection. API rate-limited per user/IP. Idempotent financial operations.
+
+---
+
+## Phase 6 — Notifications, Scheduling & Caching
+**Goal**: Async email/SMS alerts, scheduled cleanup jobs, and cache for hot data.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 6.1 | Entity | **Notification entity** | `id (UUID)`, `userId`, `type` (EMAIL/SMS), `channel`, `recipient`, `subject`, `body`, `status` (PENDING/SENT/FAILED), `retryCount`, `maxRetries` (3), `createdAt`, `sentAt` |
+| 6.2 | Entity | **NotificationAttempt entity** | `id`, `notificationId`, `attemptNumber`, `status`, `errorMessage`, `attemptedAt` |
+| 6.3 | Migration | **Flyway V9, V10** | `V9__create_notifications_table.sql`, `V10__create_notification_attempts_table.sql` |
+| 6.4 | Service | **NotificationService** | `sendEmailNotification(to, subject, body)` — `@Async`, creates Notification record, calls JavaMailSender, updates status on completion/failure. Retry up to 3 times on failure |
+| 6.5 | Service | **SmsService** | `sendSms(phone, message)` — `@Async`, creates Notification record, calls Africa's Talking API (HTTP), updates status |
+| 6.6 | Integration | **Transaction notifications** | Hook into TransactionService after successful deposit/withdraw/transfer → fire async email + SMS |
+| 6.7 | Integration | **KYC notifications** | On KYC tier upgrade or document rejection, send email notification to user |
+| 6.8 | Scheduler | **Pending transaction cleanup** | `@Scheduled(cron = "0 0 3 * * *")` — mark PENDING transactions older than 24h as FAILED (idempotent) |
+| 6.9 | Scheduler | **Idempotency key cleanup** | `@Scheduled(cron = "0 0 4 * * *")` — delete idempotency records older than 24h (idempotent) |
+| 6.10 | Scheduler | **Expired refresh token cleanup** | `@Scheduled(cron = "0 30 4 * * *")` — delete/revoke expired refresh tokens (idempotent) |
+| 6.11 | Scheduler | **Flutterwave transfer reconciliation** | `@Scheduled(fixedRate = 900000)` — every 15 min poll pending Flutterwave transfers for status updates |
+| 6.12 | Caching | **Cache configuration** | Spring Cache + Caffeine — cache wallet balance (evict on balance change), fee configurations (evict on config update), user lookups, KYC tier info |
+| 6.13 | Caching | **Cache eviction** | `@CacheEvict` on deposit/withdraw/transfer methods for wallet caches; on fee config updates for fee caches; on KYC tier change for tier cache |
+| 6.14 | Config | **Email config** | `spring.mail.*` in `application.yml` — SMTP host/port/credentials (dev: use Mailtrap or console output) |
+| 6.15 | Test | **Scheduler idempotency tests** | Run cleanup twice, verify same result |
+| 6.16 | Test | **Notification retry tests** | Mock failure, verify 3 retries, then maxed out |
+
+**Deliverable**: Email/SMS alerts on transactions and KYC events. Daily cleanup jobs. Balance/fees/tiers cached with proper eviction.
+
+---
+
+## Phase 7 — Admin Endpoints & Production Hardening
+**Goal**: Admin dashboard API, soft delete, soft freeze with reasons, and security hardening.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 7.1 | Controller | **Admin user management** | `GET /api/v1/admin/users` (paginated, searchable), `GET /api/v1/admin/users/{id}` (detail with wallet + KYC status), `GET /api/v1/admin/wallets` (all wallets with status filter) |
+| 7.2 | Controller | **Admin wallet actions** | `PATCH /api/v1/admin/wallets/{id}/freeze` (with reason: SUSPICIOUS_ACTIVITY/ADMIN_ACTION/USER_REQUEST), `PATCH /api/v1/admin/wallets/{id}/unfreeze` |
+| 7.3 | Controller | **Admin transaction search** | `GET /api/v1/admin/transactions` — search by reference, wallet, user, date range, type, status |
+| 7.4 | Controller | **Admin audit log view** | `GET /api/v1/admin/audit-logs` — paginated, filterable by entityType, action, performedBy, date range |
+| 7.5 | Controller | **Admin fee management** | Full CRUD on `FeeConfiguration`: `GET/POST/PUT/DELETE /api/v1/admin/fees` |
+| 7.6 | Controller | **Admin KYC management** | `GET /api/v1/admin/kyc/pending` (pending documents), `POST /api/v1/admin/kyc/{docId}/approve`, `POST /api/v1/admin/kyc/{docId}/reject` (with reason), `POST /api/v1/admin/kyc/users/{userId}/downgrade` |
+| 7.7 | Controller | **Admin virtual card management** | `GET /api/v1/admin/cards` (all cards), `PATCH /api/v1/admin/cards/{id}/freeze`, `PATCH /api/v1/admin/cards/{id}/close` |
+| 7.8 | Controller | **Admin Flutterwave operations** | `GET /api/v1/admin/payments/transactions` (all payment txns), `GET /api/v1/admin/payments/webhook-log` (webhook history), `POST /api/v1/admin/payments/reprocess-webhook/{id}` (replay dead-letter) |
+| 7.9 | Security | **Role-based access** | `@PreAuthorize("hasRole('ADMIN')")` on all admin endpoints |
+| 7.10 | Enhancement | **Soft delete user** | `PATCH /api/v1/admin/users/{id}/deactivate` — sets `deleted=true`, `deletedAt=now`, freezes wallet. `GET` filters out deleted by default |
+| 7.11 | Enhancement | **Security headers audit** | Verify HSTS, CSP, XSS protection, content-type options. Add `Strict-Transport-Security` in production profile |
+| 7.12 | Enhancement | **Input sanitization** | Strip/escape HTML from string inputs to prevent log injection and stored XSS (defense in depth) |
+| 7.13 | Test | **Admin endpoint security tests** | Verify USER cannot access ADMIN endpoints (403) |
+
+**Deliverable**: Complete admin API covering users, wallets, transactions, KYC, virtual cards, and Flutterwave operations. Soft delete, freeze reasons, role enforcement. Security hardening complete.
+
+---
+
+## Phase 8 — Testing & Quality Assurance
+**Goal**: Comprehensive test coverage, not just happy paths.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 8.1 | Unit | **Service layer tests** | All services: `AuthService`, `KycService`, `KycLimitEnforcer`, `TransactionService`, `WalletService`, `FeeEngineService`, `AuditService`, `NotificationService`, `PaymentService`, `CardService` |
+| 8.2 | Unit | **Security tests** | `JwtUtil`, `JwtAuthFilter`, `RateLimitingFilter`, `IdempotencyFilter` |
+| 8.3 | Unit | **Fee engine edge cases** | Zero amount, max/min clamping, rounding scenarios, inactive config fallback, concurrent calculation |
+| 8.4 | Unit | **KYC limit enforcement** | All tier levels, daily limit boundary, balance cap boundary, upgrade one-directional enforcement |
+| 8.5 | Integration | **Full transaction flow** | H2-based: register → KYC Tier 2 → deposit → transfer → withdraw → verify all balances, transaction records, audit logs |
+| 8.6 | Integration | **Concurrent transfer test** | Spawn threads attempting simultaneous transfers from same wallet, verify no negative balance and correct final balance |
+| 8.7 | Integration | **Idempotency end-to-end** | Send same `Idempotency-Key` twice, verify second call returns cached response, only one transaction recorded |
+| 8.8 | Integration | **Rate limiting end-to-end** | Exceed rate limit, verify 429 with correct headers |
+| 8.9 | Integration | **Refresh token rotation** | Full cycle: login → refresh → old token rejected after rotation → reuse detection |
+| 8.10 | Integration | **Scheduler idempotency** | Run pending cleanup twice, verify same FAILED count |
+| 8.11 | Integration | **KYC document flow** | Upload → PENDING → admin approve → tier upgrade → limits enforced; upload → PENDING → admin reject → re-upload → approve |
+| 8.12 | Integration | **Flutterwave webhook flow** | Create PENDING deposit → receive webhook → verify signature → update SUCCESSFUL → credit wallet; failed webhook → FAILED → no credit |
+| 8.13 | Integration | **Virtual card lifecycle** | Fund card → spend → freeze → unfreeze → close → return balance |
+| 8.14 | Integration | **Admin authorization** | USER token gets 403 on admin endpoints, ADMIN token succeeds |
+
+**Deliverable**: >85% code coverage on core business logic. All critical paths have integration tests. KYC, payment, and card flows fully tested.
+
+---
+
+## Phase 9 — Docker, CI/CD & Production Readiness
+**Goal**: Containerized deployment, automated pipeline, production profiles.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 9.1 | Infra | **Dockerfile** | Multi-stage build: Maven compile → JRE 17 runtime. Expose port 8080. Healthcheck via `/actuator/health` |
+| 9.2 | Infra | **docker-compose.yml** | `api` service + `postgres` 16 service + `minio` (S3-compatible for KYC docs in dev) + optional `mailpit` (dev email) |
+| 9.3 | Config | **application-prod.yml** | PostgreSQL connection (env vars), Flyway validate mode, CORS origin whitelist, Flutterwave API keys, KYC provider API keys, AWS S3 config (encryption), Redis config, secure cookie config |
+| 9.4 | CI | **GitHub Actions workflow** | `.github/workflows/ci.yml` — build, run tests (including integration), package JAR, build Docker image, push to registry (optional) |
+| 9.5 | CI | **Pre-commit checks** | Optional `.husky` or GitHub Action for compile + test on push to any branch |
+| 9.6 | Config | **Logging production config** | `logback-spring.xml` — JSON format for production, rolling file appender, console for dev, masking of passwords/PINs/KYC data in logs |
+| 9.7 | Config | **CORS configuration** | Allow specific origins (configurable), not `*` for production |
+| 9.8 | Config | **Secrets management** | Flutterwave secret key, KYC provider API keys, S3 credentials, database password — all from environment variables / secrets manager |
+| 9.9 | Docs | **README.md** | Project overview, setup instructions (local dev), environment variables, API docs link, Docker instructions |
+| 9.10 | Docs | **API curl examples** | Document key flows: register → KYC Tier 2 → deposit → transfer → withdraw → issue virtual card |
+
+**Deliverable**: `docker-compose up` runs the full stack with PostgreSQL, MinIO (KYC docs), and app. CI pipeline builds and tests.
+
+---
+
+## Phase 10 — Flutter Frontend (Post-MVP)
+**Goal**: Cross-platform mobile app for NovaWallet.
+
+| Step | Task | Details |
+|------|------|---------|
+| 10.1 | Scaffold | Flutter project with `go_router`, `riverpod`/`bloc`, `dio` for HTTP |
+| 10.2 | Auth screens | Register, login, PIN setup, forgot password, email verification |
+| 10.3 | KYC onboarding screens | Document upload (camera/gallery), selfie capture, tier status display, re-upload on rejection |
+| 10.4 | Dashboard | Balance display, quick actions (deposit/withdraw/send/KYC status), recent transactions |
+| 10.5 | Send money flow | Select contact/enter account number, enter amount, PIN confirmation, success screen |
+| 10.6 | Transaction history | Paginated list with pull-to-refresh, type/date filters |
+| 10.7 | Virtual cards screen | List cards, fund card, freeze/unfreeze, view PAN suffix + masked CVV, transaction log, close card |
+| 10.8 | Flutterwave checkout | WebView for Flutterwave payment page, deep link callback handling |
+| 10.9 | Profile | View profile, change PIN, transaction settings, KYC status and limits display |
+| 10.10 | Push notifications | Firebase Cloud Messaging integration for transaction and KYC alerts |
+
+**Deliverable**: Flutter app connecting to the NovaWallet API with full KYC, virtual card, and payment flows.
+
+---
+
+## Phase 11 — Flutterwave Payment Integration ⬅️ EXPANDED
+**Goal**: Live mobile money deposits, withdrawals, and card payments via Flutterwave with production-grade webhook handling, reconciliation, and error management.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 11.1 | Entity | **FlutterwaveTransaction entity** | `id (UUID)`, `userId`, `walletId`, `localTransactionId` (FK → Transaction), `provider` (FLUTTERWAVE), `providerReference`, `flwRef` (webhook dedup), `type` (DEPOSIT/WITHDRAWAL/CARD_FUNDING), `amount`, `providerAmount`, `providerCurrency`, `exchangeRate`, `providerFee`, `status` (PENDING/SUCCESSFUL/FAILED/CANCELLED), `webhookReceivedAt`, `webhookPayload` (JSON), `reconciliationStatus` (UNMATCHED/MATCHED/DISCREPANCY), `createdAt`, `updatedAt` |
+| 11.2 | Migration | **Flyway V13, V14** | `V13__create_flutterwave_transactions_table.sql`, `V14__create_webhook_dead_letter_table.sql` |
+| 11.3 | Service | **PaymentService** | `initiateMobileMoneyDeposit(userId, walletId, amount, network, phoneNumber)` — creates PENDING deposit, calls Flutterwave Payments API, returns payment reference; `initiateCardDeposit(userId, walletId, amount, redirectUrl)` — creates PENDING deposit, calls Flutterwave Payments API (card), returns payment link; `initiateWithdrawal(userId, walletId, amount, pin, bankCode, accountNumber)` — verify PIN + KYC limit, deduct wallet instantly, call Flutterwave Transfers API, create PENDING withdrawal record |
+| 11.4 | Service | **WebhookService** | `handleFlutterwaveWebhook(payload, signature)` — verify `Verif-Hash` header against secret, deduplicate via `flwRef` check, route to handler by event type (`charge.completed`, `charge.failed`, `transfer.completed`, `transfer.failed`), update transaction status, credit/debit wallet |
+| 11.5 | Service | **PaymentReconciliationService** | `reconcilePendingTransactions()` — `@Scheduled(fixedRate=900000)` — query Flutterwave for status of pending transfers older than 15 min, update local records. `reconcileDailyLedger()` — daily job comparing local Flutterwave transactions with Flutterwave's transaction list for discrepancy detection |
+| 11.6 | Controller | **PaymentController** | `POST /api/v1/payments/deposit/mobile-money` (network, phone, amount), `POST /api/v1/payments/deposit/card` (amount, redirectUrl), `POST /api/v1/payments/withdraw` (amount, pin, bankCode, accountNumber), `GET /api/v1/payments/transactions` (user's payment history) |
+| 11.7 | Controller | **WebhookController** | `POST /api/v1/webhooks/flutterwave` — no auth (signature-verified), 30s timeout |
+| 11.8 | Service | **FeeAbsorptionService** | `calculateUserCost(amount, transactionType)` — if `FEE_ABSORPTION_MODE=USER_PAYS`, user's deposit = amount - Flutterwave fee; if `PLATFORM_PAYS`, platform absorbs fee, user gets full amount |
+| 11.9 | Integration | **Flutterwave API client** | `FlutterwaveApiClient` — HTTP client (RestClient/WebClient) wrapping Flutterwave REST API: `POST /payments`, `POST /transfers`, `GET /transfers/{id}`, `GET /transactions`, `POST /banks` (list banks). All calls include `Authorization: Bearer {secretKey}` |
+| 11.10 | Integration | **Bank list & validation** | `GET /api/v1/payments/banks?country=ZM` — fetch supported banks for withdrawal, cache for 24h |
+| 11.11 | Error handling | **Webhook dead-letter** | If webhook handler throws exception after 3 retries → save to `webhook_dead_letter` table with payload + error for admin review. Admin can replay via `POST /api/v1/admin/payments/reprocess-webhook/{id}` |
+| 11.12 | Error handling | **Transfer failure reversal** | If withdrawal transfer FAILED (confirmed by webhook or reconciliation), automatically reverse the wallet debit: create reversal transaction, credit wallet, audit log entry, notify user |
+| 11.13 | Config | **Flutterwave config** | `flutterwave.secret-key`, `flutterwave.public-key`, `flutterwave.webhook-secret`, `flutterwave.base-url` (sandbox vs production), `flutterwave.fee-absorption-mode` (USER_PAYS/PLATFORM_PAYS), `flutterwave.reconciliation-cron` in `application-prod.yml` |
+| 11.14 | Security | **Webhook IP whitelist** | Flutterwave webhook endpoint should verify source IP (Flutterwave webhook IPs), configurable |
+| 11.15 | Test | **PaymentService tests** | Mock Flutterwave API client, verify deposit/withdrawal initiation, error handling, timeout |
+| 11.16 | Test | **WebhookService tests** | Valid signature → processed; invalid signature → 401; duplicate flwRef → skipped; charge.completed → wallet credited; transfer.failed → reversal created |
+| 11.17 | Test | **Reconciliation tests** | Pending older than 15 min → polled; status mismatch → DISCREPANCY logged |
+
+**Deliverable**: Full Flutterwave integration — mobile money deposits, card payments, bank withdrawals. Webhook-driven transaction completion with signature verification, deduplication, dead-letter queue, and automated reversal on failure.
+
+---
+
+## Phase 12 — Virtual Card Issuing ⬅️ NEW
+**Goal**: Issue, fund, freeze, unfreeze, and close virtual debit cards backed by Flutterwave Issuing API or alternative provider.
+
+| Step | Domain | Task | Details |
+|------|--------|------|---------|
+| 12.1 | Entity | **VirtualCard entity** | `id (UUID)`, `userId`, `providerCardId`, `panSuffix` (last 4 digits only), `currency` (USD default), `balance` (BigDecimal), `status` (INACTIVE/ACTIVE/FROZEN/CLOSED), `cardType` (SINGLE_USE/MULTI_USE), `issuedAt`, `expiresAt`, `dailyLimit`, `monthlyLimit`, `lastFundingAt`, `createdAt`, `updatedAt` |
+| 12.2 | Migration | **Flyway V15** | `V15__create_virtual_cards_table.sql` |
+| 12.3 | DTO | **Card DTOs** | `IssueCardRequest`, `CardResponse` (masked PAN: `**** **** **** 1234`, expiry, CVV masked), `FundCardRequest`, `CardTransactionResponse`, `CardStatusUpdateRequest` |
+| 12.4 | Service | **CardService** | `issueCard(userId, cardType, currency)` — verify KYC Tier 2+, check no duplicate active cards of same type, call issuing provider, store panSuffix only, return masked card details; `fundCard(cardId, amount, pin)` — verify PIN, deduct from ZMW wallet at exchange rate, credit card balance, call provider to load funds; `freezeCard(cardId)`, `unfreezeCard(cardId)`, `closeCard(cardId)` — update status locally + notify provider |
+| 12.5 | Service | **CardProviderClient** | Interface for card issuing: `createCard(user, type, currency)`, `fundCard(providerCardId, amount, currency)`, `freezeCard(providerCardId)`, `unfreezeCard(providerCardId)`, `closeCard(providerCardId)`, `getCardTransactions(providerCardId)`. Primary impl: `FlutterwaveIssuingClient` |
+| 12.6 | Service | **ExchangeRateService** | `convert(amount, fromCurrency, toCurrency)` — fetch rate from Flutterwave or configurable provider, apply small spread (configurable), cache rates for 5 min. Used when funding USD cards from ZMW wallet |
+| 12.7 | Controller | **CardController** | `POST /api/v1/cards` (issue), `GET /api/v1/cards` (list user's cards), `GET /api/v1/cards/{id}` (single card details, PAN masked), `POST /api/v1/cards/{id}/fund` (fund from wallet), `PATCH /api/v1/cards/{id}/status` (freeze/unfreeze), `DELETE /api/v1/cards/{id}` (close), `GET /api/v1/cards/{id}/transactions` (card spending history) |
+| 12.8 | Controller | **Admin card controller** | `GET /api/v1/admin/cards` (all cards, filterable by status/user), `PATCH /api/v1/admin/cards/{id}/freeze`, `PATCH /api/v1/admin/cards/{id}/close` |
+| 12.9 | Security | **Card access control** | Users see only their own cards. CVV view requires PIN re-verification (`POST /api/v1/cards/{id}/cvv` with PIN in body). PAN never returned in full — only last 4 digits |
+| 12.10 | Validation | **Card limits** | Max cards per user: 3. Single-use card auto-closes after first transaction. Multi-use card daily limit defaults to ZMW 5,000 equivalent (configurable per KYC tier) |
+| 12.11 | Enhancement | **Spending notifications** | On card transaction (via provider webhook or polling), notify user via email/SMS |
+| 12.12 | Enhancement | **Card expiry handling** | 30 days before expiry: send notification. On expiry: auto-close, return balance to wallet |
+| 12.13 | Test | **CardService tests** | Issue (KYC check, duplicate prevention, provider call), fund (PIN verification, exchange rate, balance deduction), freeze/unfreeze/close lifecycle, balance return on close |
+| 12.14 | Test | **Exchange rate tests** | Rate fetching, caching, spread application, stale rate handling |
+| 12.15 | Integration | **Card lifecycle E2E** | Register → KYC Tier 2 → issue card → fund card → freeze → unfreeze → close → balance returned |
+
+**Deliverable**: Users can issue virtual USD cards, fund them from ZMW wallet, freeze/unfreeze, view masked details, and close with automatic balance return.
+
+---
+
+## Entity Relationship Summary (Updated)
+
+```
+User (1) ──── (1) Wallet
+User (1) ──── (N) RefreshToken
+User (1) ──── (1) KycTier
+User (1) ──── (N) KycDocument
+User (1) ──── (N) VirtualCard
+User (1) ──── (N) Notification
+User (1) ──── (N) FlutterwaveTransaction
+Wallet (1) ──── (N) Transaction (senderWallet)
+Wallet (1) ──── (N) Transaction (receiverWallet)
+Wallet (1) ──── (N) FlutterwaveTransaction
+Transaction (1) ──── (1) FlutterwaveTransaction (localTransactionId)
+Transaction (N) ──── (1) Transaction (relatedTransactionId) — self-referencing for paired records
+FeeConfiguration — standalone, no FK
+AuditLog — standalone, entityType + entityId as polymorphic reference
+IdempotencyKey — standalone
+NotificationAttempt (N) ──── (1) Notification
+```
+
+## Key Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Wallet balance | Cached + DB-stored + ledger-verifiable | Balance is computed from transactions; stored balance used for fast reads; periodic reconciliation possible |
+| Money precision | BigDecimal scale=2, HALF_EVEN | Banking standard, ngwee (ZMW cent) precision |
+| Concurrency | `@Version` optimistic locking | Prevents lost updates on concurrent transfers |
+| Audit writes | `@Async` + `CompletableFuture` | Non-blocking, won't slow financial operations |
+| Token storage | BCrypt hash in DB (refresh tokens) | Server-side storage prevents MitM token theft persistence |
+| Rate limiting | Token-bucket filter | Constant memory, burst-tolerant, O(1) per check |
+| Migration strategy | Flyway, sequential versioned SQL | Explicit schema control, no auto-DDL in production |
+| KYC provider | Abstract `KycProviderClient` interface | Swap SmileID / Dojah / IdentityPass without code changes |
+| Payment gateway | Abstract `PaymentProvider` interface | Add Paystack, Stripe as additional providers later |
+| KYC documents | S3/MinIO object storage, not DB BLOBs | Cheaper storage, CDN delivery, easier encryption, no DB bloat |
+| Virtual card PAN | Never stored in full (last 4 digits only) | PCI-DSS scope reduction — PAN not in application DB |
+| Flutterwave webhook dedup | `flwRef` unique index + idempotency check | Prevents double-credit on webhook replay |
+| Fee absorption | Configurable USER_PAYS / PLATFORM_PAYS | Business decision, not hardcoded |
+| Exchange rate | 5-min cache with configurable spread | Avoids hitting Flutterwave rate API on every call |
+
+## Recommended Implementation Order (Updated)
+
+```
+Phase 0 ─► Phase 1 ─► Phase 1.5 (KYC) ─► Phase 2 ─► Phase 3 ─► Phase 4
+                                    │                                │
+                                    └────── Phase 5 ◄── Phase 6 ─────┘
+                                                         │
+                                                         ▼
+                                              Phase 7 (Admin + all domains)
+                                                         │
+                                                         ▼
+                                              Phase 8 (Testing)
+                                                         │
+                                                         ▼
+                                              Phase 9 (Docker/CI)
+                                                         │
+                                                   ┌─────┴─────┐
+                                                   ▼           ▼
+                                              Phase 10     Phase 11 (Flutterwave)
+                                              (Flutter)         │
+                                                                 ▼
+                                                          Phase 12 (Virtual Cards)
+```
+
+**Key change**: Phase 1.5 (KYC) is inserted **before** Phase 2 because all transactions must enforce KYC limits. Phase 11 and 12 are post-MVP (alongside Flutter frontend).
+
+---
+
+## Day-by-Day Schedule (Updated)
+
+**Core philosophy**: Every day has the same 🟡 (medium, ~6h) intensity. No 🔴 burnout days, no 🟢 wasted days.
+
+### Week 1 — Foundation & Authentication
+
+| Day | Phase | Focus | Tasks | Intensity |
+|-----|-------|-------|-------|-----------|
+| **1** | **0** | Project Foundation | Expand `pom.xml` with all deps; set up multi-profile `application.yml` (dev/prod); create base package structure; global `@RestControllerAdvice`; `ApiResponse<T>` | 🟡 |
+| **2** | **0** | Foundation Wrap + Flyway Init | Flyway V1 baseline; security headers filter; actuator health + info; Swagger/OpenAPI with security scheme; MDC tracing; verify app boots on port 8080 with `/api` context-path | 🟡 |
+| **3** | **1** | User & Wallet Entities + Migrations | `User` entity (UUID, names, email/phone unique, passwordHash, role, emailVerified, soft-delete, @Version); `Role` enum; `Wallet` entity (UUID, accountNumber, balance BigDecimal, status, @Version); `RefreshToken` entity; Flyway V1/V2/V3 SQL | 🟡 |
+| **4** | **1** | Security Foundation | JWT utility (jjwt 0.12.x); `SecurityFilterChain` config; `BCryptPasswordEncoder` bean; `JwtAuthFilter` (OncePerRequestFilter) | 🟡 |
+| **5** | **1** | Auth Service | Auth DTOs; `AccountNumberGenerator`; `AuthService.register()` + `login()`; `AuthController`; verify end-to-end with curl | 🟡 |
+| **6** | **1** | PIN + Email + Password Reset | `POST /api/v1/auth/pin`; PIN rate limiting (3 attempts, 15 min lock); email verification flow; password reset flow | 🟡 |
+
+### Week 2 — KYC + Transactions
+
+| Day | Phase | Focus | Tasks | Intensity |
+|-----|-------|-------|-------|-----------|
+| **7** | **1.5** | KYC Entities + Migration | `KycDocument` entity (documentType, verificationStatus, fileUrl, providerReference); `KycTier` entity (currentTier, maxBalance, daily limits); `KycTier` enum (NONE/TIER_1/TIER_2/TIER_3); Flyway V11/V12 SQL | 🟡 |
+| **8** | **1.5** | KYC Service + Providers | `KycService` — document upload, verification flow; `KycProviderClient` interface + SmileID/Dojah implementation; file storage (S3/MinIO encryption); AML screening integration | 🟡 |
+| **9** | **1.5** | KYC Controllers + Enforcement | `KycController` (upload, status, submit); Admin KYC endpoints (approve/reject/downgrade); `KycLimitEnforcer` (daily limits, balance caps); wire into `TransactionService` | 🟡 |
+| **10** | **2** | Transaction Entity + Setup | `Transaction` entity; Flyway V4; `TransactionReferenceGenerator`; DTOs; `TransactionController` scaffold | 🟡 |
+| **11** | **2** | Deposit + Withdraw Services | `deposit()` with KYC cap check; `withdraw()` with PIN + KYC daily limit; atomic balance updates; unit tests | 🟡 |
+| **12** | **2** | Transfer + Atomicity | `transfer()` with PIN, KYC limits, anti-self-transfer, debit/credit pair; `@Transactional` atomicity; integration tests | 🟡 |
+
+### Week 3 — History, Fees, Audit + Security
+
+| Day | Phase | Focus | Tasks | Intensity |
+|-----|-------|-------|-------|-----------|
+| **13** | **3** | Transaction History | `TransactionRepository` with `JpaSpecificationExecutor`; `TransactionHistoryService` with pagination/filtering; `PagedResponse<T>`; `GET /api/v1/wallets/{walletId}/transactions`; ownership check; balance endpoint | 🟡 |
+| **14** | **4** | Fee Engine | `FeeConfiguration` entity; Flyway V5; `FeeEngineService` (percentage + flat, min/max clamp, HALF_EVEN); fee estimation endpoint; admin fee CRUD | 🟡 |
+| **15** | **4** | Audit Logging + Fee Integration | `AuditLog` entity (append-only); Flyway V6; `AuditService` with `@Async`; `@Audited` annotation; integrate fee deduction into transfer flow; FeeEngine + AuditService tests | 🟡 |
+| **16** | **5** | Refresh Token Rotation + Rate Limiting | Rotation with theft detection; `POST /api/v1/auth/refresh`; logout/logout-all; token-bucket rate limiter filter; rate limit headers; 429 response; unit + integration tests | 🟡 |
+| **17** | **5** | Idempotency + Limiting Wrap | `IdempotencyKey` entity + Flyway V7/V8; `IdempotencyFilter` (POST/PATCH dedup); idempotency integration tests; rate limiting E2E tests | 🟡 |
+| **18** | **6** | Notifications + Scheduling | `Notification`/`NotificationAttempt` entities + Flyway V9/V10; `NotificationService` (email + SMS, @Async, 3 retry); hook into transactions + KYC events; scheduled jobs (3AM cleanup, 4AM idempotency cleanup, 4:30AM token cleanup) | 🟡 |
+
+### Week 4 — Admin, Caching + Docker
+
+| Day | Phase | Focus | Tasks | Intensity |
+|-----|-------|-------|-------|-----------|
+| **19** | **6** | Caching + Scheduling Wrap | Caffeine cache config (balances, fees, KYC tiers); `@CacheEvict` on balance/tier/fee changes; scheduler idempotency tests; notification retry tests; Flutterwave reconciliation scheduler scaffold | 🟡 |
+| **20** | **7** | Admin Endpoints | Admin user/wallet/transaction management; KYC admin (pending/approve/reject/downgrade); card admin; fee CRUD; `@PreAuthorize("hasRole('ADMIN')")`; admin security tests | 🟡 |
+| **21** | **7** | Hardening | Soft delete user; security headers audit; input sanitization; 403 tests for USER tokens on admin endpoints | 🟡 |
+| **22** | **9** | Docker + Production Config | Multi-stage Dockerfile; docker-compose.yml (API + PostgreSQL 16 + MinIO + Mailpit); application-prod.yml with env vars; logback-spring.xml JSON format; CORS whitelist; secrets management | 🟡 |
+| **23** | **9** | CI/CD + Documentation | GitHub Actions workflow (build, test, package); README.md; API curl examples; verify docker-compose up runs full stack | 🟡 |
+| **24–25** | **8** | Testing Deep Dive | Concurrent transfer test; idempotency E2E; rate limiting E2E; refresh token rotation cycle; scheduler idempotency; KYC document flow; final end-to-end smoke test; coverage report + gap filling | 🟡 |
+
+### Total: ~25 days
+
+---
+
+## Post-MVP Schedule (Updated)
+
+| Phase | Timeline | What |
+|-------|----------|------|
+| **10** — Flutter Frontend | 3–4 weeks | Cross-platform mobile app: auth, KYC onboarding, dashboard, send money, card management, transaction history, push notifications |
+| **11** — Flutterwave Integration | 2–3 weeks | Mobile money deposits, card payments, bank withdrawals, webhook handling, reconciliation, dead-letter queue, transfer failure reversal |
+| **12** — Virtual Card Issuing | 1–2 weeks | Issue USD virtual cards, fund from ZMW wallet, freeze/unfreeze/close, spending notifications, card transaction history |
+| **13** — Paystack Integration | 1–2 weeks | Alternative payment gateway, card payments, webhook handling, reconciliation |
+| **14** — Production Hardening | Ongoing | Kubernetes, horizontal scaling, Redis cache cluster, performance tuning, security audit |
+
+### Alternative Schedules
+
+| Mode | Total Days | Per-Phase Pace | Trade-offs |
+|------|-----------|----------------|------------|
+| **Full (this plan)** | **25 days** | ~2 days per phase | Every day 🟡 balanced. Full KYC, Flutterwave (scaffolded), virtual cards, tests, Docker, CI/CD |
+| **MVP (no KYC/cards)** | **16 days** | ~1.5 days per phase | Phase 0–5 only. No KYC (Tier 1 only, hardcoded limits), no virtual cards, no Flutterwave. Basic wallet P2P |
+| **MVP + KYC** | **19 days** | ~1.5 days per phase | Phase 0–1.5 + 2–5. No virtual cards, no Flutterwave. KYC Tier 1–2 with document upload (manual approval only) |
+| **Part-time (evenings)** | **8–9 weeks** | Same 25 days spread | ~3 days/week pace, good if employed or studying |
