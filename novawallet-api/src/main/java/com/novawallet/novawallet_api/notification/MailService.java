@@ -91,6 +91,16 @@ public class MailService {
         sendEmail(to, subject, body);
     }
 
+    /**
+     * Send a raw email with pre-formatted subject and body.
+     * Used by {@link com.novawallet.novawallet_api.notification.service.NotificationService}
+     * for generic notification delivery without template-specific methods.
+     * Not annotated with @Async — NotificationService handles async dispatch.
+     */
+    public void sendRaw(String to, String subject, String body) {
+        sendEmail(to, subject, body);
+    }
+
     private void sendEmail(String to, String subject, String body) {
         if (mailSender.isEmpty()) {
             log.info("=== EMAIL (no SMTP configured) ===");
