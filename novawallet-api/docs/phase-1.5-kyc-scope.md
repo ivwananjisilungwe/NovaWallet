@@ -1,4 +1,4 @@
-# Phase 1.5 — KYC (Know Your Customer)
+/# Phase 1.5 — KYC (Know Your Customer)
 
 > **Status**: Design / Not Started  
 > **Depends on**: Phase 1 ✅ (Auth, email, PIN, rate limiting)  
