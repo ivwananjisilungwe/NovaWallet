@@ -1,10 +1,16 @@
 package com.novawallet.novawallet_api.endpoint;
 
+import com.novawallet.novawallet_api.idempotency.repository.IdempotencyKeyRepository;
+import com.novawallet.novawallet_api.idempotency.schedule.IdempotencyCleanupJob;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,6 +18,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
+
+    @Autowired
+    private IdempotencyKeyRepository idempotencyKeyRepository;
+
+    @Autowired
+    private IdempotencyCleanupJob idempotencyCleanupJob;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     private void setPin(String token) throws Exception {
         mockMvc.perform(post("/v1/pin")
@@ -222,5 +240,47 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
                 .getContentAsString();
 
         Assertions.assertEquals(firstResponse, secondResponse);
+    }
+
+    @Test
+    @DisplayName("I7: Expired key is reusable after cleanup job removes it")
+    void expiredKey_shouldBeReusableAfterCleanup() throws Exception {
+        RegisteredUser user = registerEndpointUser("idemexp");
+        Wallet wallet = createWalletFor(user);
+        String key = "idemp-expired-key-1";
+
+        String requestBody = """
+                {"amount": 25.00, "description": "Expired key test"}
+                """;
+
+        // First use — key is acquired and completed
+        mockMvc.perform(post("/v1/wallets/{walletId}/deposit", wallet.getId())
+                        .header("Authorization", "Bearer " + user.token())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated());
+
+        // Manually backdate the expires_at so the key appears expired
+        transactionTemplate.executeWithoutResult(status -> {
+            entityManager.createNativeQuery(
+                            "UPDATE idempotency_keys SET expires_at = '2020-01-01T00:00:00' WHERE idempotency_key = :key")
+                    .setParameter("key", key)
+                    .executeUpdate();
+        });
+
+        // Cleanup purges expired records
+        idempotencyCleanupJob.cleanExpiredRecords();
+
+        // Same key should now work as a fresh transaction
+        mockMvc.perform(post("/v1/wallets/{walletId}/deposit", wallet.getId())
+                        .header("Authorization", "Bearer " + user.token())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.data.amount").value(25.00));
     }
 }

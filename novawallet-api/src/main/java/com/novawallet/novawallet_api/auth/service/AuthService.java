@@ -21,13 +21,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
-@Transactional
 public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
@@ -217,7 +215,19 @@ public class AuthService {
     // ==================== Refresh Token ====================
 
     public AuthResponse refreshAccessToken(String refreshTokenValue) {
-        RefreshToken storedToken = tokenService.validateAndGetRefreshToken(refreshTokenValue);
+        RefreshToken storedToken;
+        try {
+            storedToken = tokenService.validateAndGetRefreshToken(refreshTokenValue);
+        } catch (UnauthorizedException e) {
+            if (e.getMessage().equals("Refresh token has been revoked")) {
+                String tokenHash = tokenService.hashToken(refreshTokenValue);
+                UUID userId = tokenService.findUserIdByTokenHash(tokenHash);
+                if (userId != null) {
+                    tokenService.revokeAllUserTokens(userId);
+                }
+            }
+            throw e;
+        }
 
         // Rotate: revoke old, issue new
         tokenService.revokeToken(storedToken);

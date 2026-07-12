@@ -5,6 +5,7 @@ import com.novawallet.novawallet_api.token.entity.RefreshToken;
 import com.novawallet.novawallet_api.token.repository.RefreshTokenRepository;
 import com.novawallet.novawallet_api.user.entity.User;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
@@ -47,7 +48,6 @@ public class TokenService {
                 .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
 
         if (storedToken.isRevoked()) {
-            refreshTokenRepository.revokeAllByUserId(storedToken.getUserId());
             throw new UnauthorizedException("Refresh token has been revoked");
         }
 
@@ -58,11 +58,18 @@ public class TokenService {
         return storedToken;
     }
 
+    public UUID findUserIdByTokenHash(String tokenHash) {
+        return refreshTokenRepository.findByTokenHash(tokenHash)
+                .map(RefreshToken::getUserId)
+                .orElse(null);
+    }
+
     public void revokeToken(RefreshToken refreshToken) {
         refreshToken.setRevoked(true);
         refreshTokenRepository.save(refreshToken);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void revokeAllUserTokens(UUID userId) {
         refreshTokenRepository.revokeAllByUserId(userId);
     }
