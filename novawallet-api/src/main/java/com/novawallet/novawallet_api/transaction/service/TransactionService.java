@@ -235,7 +235,11 @@ public class TransactionService {
 
         // Credit receiver for amount only
         BigDecimal receiverBalanceBefore = receiverWallet.getBalance();
-        walletRepository.updateBalance(receiverWalletId, amount);
+        int receiverUpdated = walletRepository.updateBalance(receiverWalletId, amount);
+        if (receiverUpdated == 0) {
+            throw new IllegalStateException(
+                    "Failed to credit receiver wallet " + receiverWalletId + " — it may have been removed");
+        }
 
         // Re-read updated balances
         senderWallet = walletRepository.findById(senderWallet.getId())

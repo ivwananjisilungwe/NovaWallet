@@ -33,8 +33,22 @@ public interface WalletRepository extends JpaRepository<Wallet, UUID> {
     @Query("SELECT w FROM Wallet w WHERE w.id = :id")
     Optional<Wallet> findByIdWithLock(@Param("id") UUID id);
 
+    /**
+     * Atomically adjusts the wallet balance and increments the optimistic-lock version.
+     * <p>
+     * Because this is a native query (not JPQL), it bypasses Hibernate's automatic
+     * {@code @Version} management.  We therefore bump {@code version} explicitly so
+     * that {@code @Version} still protects concurrent write paths that don't use
+     * pessimistic locks (e.g. freezeWallet).
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(value = "UPDATE wallets SET balance = balance + :amount WHERE id = :walletId AND balance + :amount >= 0",
+    @Query(value = """
+            UPDATE wallets
+            SET balance = balance + :amount,
+                version = version + 1
+            WHERE id = :walletId
+              AND balance + :amount >= 0
+            """,
             nativeQuery = true)
     int updateBalance(@Param("walletId") UUID walletId, @Param("amount") BigDecimal amount);
 }

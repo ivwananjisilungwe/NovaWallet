@@ -50,7 +50,8 @@ public class WalletService {
     }
 
     public WalletResponse freezeWallet(UUID walletId, FreezeReason reason, UUID adminId) {
-        Wallet wallet = getWalletEntity(walletId);
+        Wallet wallet = walletRepository.findByIdWithLock(walletId)
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found: " + walletId));
         if (wallet.getStatus() == WalletStatus.FROZEN) {
             throw new BadRequestException("Wallet is already frozen");
         }
@@ -64,7 +65,8 @@ public class WalletService {
     }
 
     public WalletResponse unfreezeWallet(UUID walletId, UUID adminId) {
-        Wallet wallet = getWalletEntity(walletId);
+        Wallet wallet = walletRepository.findByIdWithLock(walletId)
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found: " + walletId));
         if (wallet.getStatus() != WalletStatus.FROZEN) {
             throw new BadRequestException("Wallet is not frozen");
         }
