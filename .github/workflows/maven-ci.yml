@@ -1,0 +1,36 @@
+name: NovaWallet API CI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: novawallet-api
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Run Maven tests
+        run: mvn test
+
+      - name: Build application package
+        run: mvn -DskipTests package
