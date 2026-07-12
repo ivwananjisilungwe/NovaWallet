@@ -1,12 +1,18 @@
 novawallet-api.zip
+
+# Project documentation
 novawallet-project-plan.md
 SRS.md
 
-# LitOpenCode working files
+# Teaching docs (instructor-style explanations per user preference)
+novawallet-api/docs/
+
+# OpenCode working files
+.omo/
+.opencode/
 .litopencode/
-
-# Handoff documents
 HANDOFF.md
-
-# Handoff session files
 .handoffs/
+
+# Backup files
+*.bak
