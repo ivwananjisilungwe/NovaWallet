@@ -1,0 +1,15 @@
+package com.novawallet.novawallet_api.notification.entity;
+
+public enum NotificationType {
+    EMAIL_VERIFICATION,
+    PASSWORD_RESET,
+    KYC_APPROVED,
+    KYC_REJECTED,
+    TRANSACTION_DEPOSIT,
+    TRANSACTION_WITHDRAWAL,
+    TRANSACTION_TRANSFER_SENT,
+    TRANSACTION_TRANSFER_RECEIVED,
+    WALLET_FROZEN,
+    WALLET_UNFROZEN,
+    ADMIN_ACTION
+}
