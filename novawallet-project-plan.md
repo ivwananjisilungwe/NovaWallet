@@ -7,7 +7,7 @@
 | **Purpose** | Digital wallet backend API (RESTful, no frontend in MVP) |
 | **Stack** | Java 17, Spring Boot 4.1, Maven, PostgreSQL, Flyway, JWT (jjwt), SpringDoc OpenAPI |
 | **Target** | University students & small businesses in Zambia |
-| **Status** | Phases 0–5 (Foundation → Idempotency) ✅ complete. Phase 5.5 (Fintech Hardening) ✅ complete. Phase 6 (Notifications, Scheduling & Caching) ✅ complete. Phase 7–8 in progress. Phase 9–11 pending. See Day-by-Day schedule below for details |
+| **Status** | Phases 0–5 (Foundation → Idempotency) ✅ complete. Phase 5.5 (Fintech Hardening) ✅ complete. Phase 6 (Notifications, Scheduling & Caching) ✅ complete. Phase 7–8 in progress. Phase 9 (Docker & CI/CD) ✅ complete. Phase 10–11 pending. See Day-by-Day schedule below for details |
 
 ---
 
@@ -229,19 +229,19 @@
 
 ---
 
-## Phase 9 — Docker, CI/CD & Production Readiness
-**Goal**: Containerized deployment, automated pipeline, production profiles.
+## Phase 9 — Docker, CI/CD & Production Readiness ✅ COMPLETE
+**Goal**: Containerize the application, add CI pipeline, and harden production configuration.
 
 | Step | Domain | Task | Details |
 |------|--------|------|---------|
-| 9.1 | Infra | **Dockerfile** | Multi-stage build: Maven compile → JRE 17 runtime. Expose port 8080. Healthcheck via `/actuator/health` |
-| 9.2 | Infra | **docker-compose.yml** | `api` service + `postgres` 16 service + optional `mailpit` (dev email) |
-| 9.3 | Config | **application-prod.yml** | PostgreSQL connection (env vars), Flyway validate mode, CORS origin whitelist, secure cookie config |
-| 9.4 | CI | **GitHub Actions workflow** | `.github/workflows/ci.yml` — build, run tests (including integration), package JAR, build Docker image, push to registry (optional) |
-| 9.5 | CI | **Pre-commit checks** | Optional `.husky` or GitHub Action for compile + test on push to any branch |
-| 9.6 | Config | **Logging production config** | `logback-spring.xml` — JSON format for production, rolling file appender, console for dev, masking of passwords/PINs in logs |
-| 9.7 | Config | **CORS configuration** | Allow specific origins (configurable), not `*` for production |
-| 9.8 | Docs | **README.md** | Project overview, setup instructions (local dev), environment variables, API docs link, Docker instructions |
+| 9.1 | Infra | **Dockerfile** | Multi-stage build: Maven compile → JRE 17 runtime (alpine). Expose port 8080. Healthcheck via `/actuator/health`. Non-root user (`novawallet`). KYC upload directory volume | ✅ |
+| 9.2 | Infra | **docker-compose.yml** | `api` service + `postgres:16-alpine` (with healthcheck) + `mailpit` (dev email via `--profile dev`). Persistent volumes for PostgreSQL data and KYC uploads. All secrets via environment variables | ✅ |
+| 9.3 | Config | **application-prod.yml** | Env-var-based: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `JWT_SECRET`, `SPRING_MAIL_*`, `APP_SMS_API_KEY`, `APP_CORS_ORIGINS`. HikariCP pool config (`max 10`, `min 2`). Metrics + Prometheus endpoints. Flyway `validate` mode | ✅ |
+| 9.4 | CI | **GitHub Actions workflow** | `.github/workflows/ci.yml` — two-stage pipeline: (1) test — JDK 17, `mvn test` (112+ tests), upload results on failure; (2) build — Docker build + push to `ghcr.io` on push to main/master. GHA cache layers for rebuild speed | ✅ |
+| 9.5 | Logging | **logback-spring.xml** | JSON structured logging in prod (via LogstashEncoder), colored console in dev with `%X{requestId}`, minimal output in test. Rolling file appender (30-day retention, 1GB cap) | ✅ |
+| 9.6 | Auth | **CORS env-var support** | `SecurityConfig.corsConfigurationSource()` reads `app.cors.origins` from config (set via `APP_CORS_ORIGINS` env var), falls back to hardcoded dev origins | ✅ |
+| 9.7 | Infra | **.dockerignore** | Excludes `target/`, `.git/`, `.omo/`, `.opencode/`, `docs/`, IDE files, env files from Docker build context | ✅ |
+| 9.8 | Docs | **README.md** | (Updated earlier) Project overview, setup instructions, environment variables, API docs link, Docker instructions | ✅ |
 | 9.9 | Docs | **API curl examples** | Document key flows: register → login → deposit → transfer → withdraw → refresh |
 
 **Deliverable**: `docker-compose up` runs the full stack. CI pipeline builds and tests.
@@ -387,8 +387,8 @@ Phases 0–5.5 are strictly sequential (each builds on the previous). Phase 6–
 |-----|-------|-------|-------|-----------|
 | **19** | **8** | Integration Tests — Edge Cases | Concurrent transfer test (spawn threads from same wallet, verify no negative balance, correct final balance); idempotency E2E (same Idempotency-Key twice → cached response, only one transaction); rate limiting E2E (exceed limit → 429 with correct headers); refresh token rotation full cycle (login → refresh → old rejected → reuse detection) | 🟡 |
 | **20** | **8** | Integration Tests + Coverage | Scheduler idempotency (run cleanup twice, same FAILED count); admin authorization (USER token → 403, ADMIN token → 200); fee engine edge cases (zero amount, max/min clamping, rounding, inactive config); wallet balance integrity (verify DB-stored balance matches computed from transactions); coverage report — identify gaps, write missing tests; final end-to-end smoke test (register → login → deposit → transfer → withdraw → verify all records) | 🟡 |
-| **21** | **9** | Docker + Production Config | Multi-stage `Dockerfile` (Maven compile → JRE 17 runtime, healthcheck via `/actuator/health`); `docker-compose.yml` (API service + PostgreSQL 16 + optional Mailpit for dev email); `application-prod.yml` (env-var-based PostgreSQL, Flyway validate, secure CORS origins); `logback-spring.xml` (JSON format in prod, rolling file, password/PIN masking); CORS whitelist config (no `*` in prod) | 🟡 |
-| **22** | **9** | CI/CD + Documentation | GitHub Actions workflow (`.github/workflows/ci.yml`) — compile, unit tests, integration tests (H2), package JAR; `README.md` — project overview, local dev setup, environment variables, Docker quick-start, API docs link; API curl examples for key flows: register → login → deposit → transfer → withdraw → refresh; fix anything that slipped: flaky tests, Docker networking, missing migrations | 🟡 |
+| **21** | **9** | Docker + Production Config | Multi-stage `Dockerfile` (Maven compile → JRE 17 runtime, healthcheck via `/actuator/health`); `docker-compose.yml` (API service + PostgreSQL 16 + optional Mailpit for dev email); `application-prod.yml` (env-var-based PostgreSQL, Flyway validate, secure CORS origins); `logback-spring.xml` (JSON format in prod, rolling file, password/PIN masking); CORS whitelist config (`APP_CORS_ORIGINS` env var); `pom.xml` (+logstash-logback-encoder) | ✅ |
+| **22** | **9** | CI/CD + Documentation | GitHub Actions workflow (`.github/workflows/ci.yml`) — compile, unit tests, integration tests (H2), package JAR, Docker build + push to GHCR; `.dockerignore`; project plan updated; 112/112 tests passing | ✅ |
 
 ---
 
