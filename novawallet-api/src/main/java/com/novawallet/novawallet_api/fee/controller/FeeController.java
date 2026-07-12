@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.fee.controller;
 
+import com.novawallet.novawallet_api.admin.dto.CreateFeeRequest;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
 import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.fee.dto.FeeEstimateRequest;
@@ -115,5 +116,31 @@ public class FeeController {
     ) {
         FeeConfiguration config = feeEngineService.updateConfiguration(id, updated);
         return ResponseEntity.ok(ApiResponse.success(config, "Fee configuration updated"));
+    }
+
+    @Operation(
+            summary = "Create fee configuration",
+            description = "Create a new fee configuration. Requires ADMIN role."
+    )
+    @PostMapping("/admin/fees")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<FeeConfiguration>> createFeeConfiguration(
+            @Valid @RequestBody CreateFeeRequest request
+    ) {
+        FeeConfiguration config = feeEngineService.createConfiguration(request);
+        return ResponseEntity.ok(ApiResponse.success(config, "Fee configuration created"));
+    }
+
+    @Operation(
+            summary = "Delete fee configuration",
+            description = "Delete a fee configuration by ID. Requires ADMIN role."
+    )
+    @DeleteMapping("/admin/fees/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteFeeConfiguration(
+            @PathVariable @Parameter(description = "Fee configuration UUID") UUID id
+    ) {
+        feeEngineService.deleteConfiguration(id);
+        return ResponseEntity.ok(ApiResponse.success(null, "Fee configuration deleted"));
     }
 }
