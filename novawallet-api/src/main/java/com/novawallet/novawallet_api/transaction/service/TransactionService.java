@@ -8,6 +8,9 @@ import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.fee.enums.FeeType;
 import com.novawallet.novawallet_api.fee.service.FeeEngineService;
 import com.novawallet.novawallet_api.kyc.config.KycConfig;
+import com.novawallet.novawallet_api.notification.entity.NotificationChannel;
+import com.novawallet.novawallet_api.notification.entity.NotificationType;
+import com.novawallet.novawallet_api.notification.service.NotificationService;
 import com.novawallet.novawallet_api.kyc.enums.KycStatus;
 import com.novawallet.novawallet_api.transaction.dto.DepositRequest;
 import com.novawallet.novawallet_api.transaction.dto.TransactionResponse;
@@ -25,6 +28,7 @@ import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +52,7 @@ public class TransactionService {
     private final AuditService auditService;
     private final UserRepository userRepository;
     private final KycConfig kycConfig;
+    private final NotificationService notificationService;
 
     public TransactionService(
             WalletRepository walletRepository,
@@ -57,7 +62,8 @@ public class TransactionService {
             FeeEngineService feeEngineService,
             AuditService auditService,
             UserRepository userRepository,
-            KycConfig kycConfig
+            KycConfig kycConfig,
+            NotificationService notificationService
     ) {
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
@@ -67,8 +73,10 @@ public class TransactionService {
         this.auditService = auditService;
         this.userRepository = userRepository;
         this.kycConfig = kycConfig;
+        this.notificationService = notificationService;
     }
 
+    @CacheEvict(value = "walletBalances", key = "#walletId")
     public TransactionResponse deposit(UUID walletId, DepositRequest request, UUID userId) {
         Wallet wallet = findActiveWalletWithLock(walletId, userId);
 
@@ -118,9 +126,19 @@ public class TransactionService {
         auditService.recordAction("Wallet", walletId, "DEPOSIT",
                 balanceBefore.toString(), balanceAfter.toString(), userId);
 
+        notificationService.sendBoth(
+                userId, user.getEmail(), null,
+                NotificationType.TRANSACTION_DEPOSIT,
+                "Deposit Confirmed",
+                "Your deposit of K" + amount + " has been processed. "
+                        + "Reference: " + transaction.getReference(),
+                "Deposit: K" + amount + " successful. Ref: " + transaction.getReference()
+        );
+
         return toResponse(transaction);
     }
 
+    @CacheEvict(value = "walletBalances", key = "#walletId")
     public TransactionResponse withdraw(UUID walletId, WithdrawRequest request, UUID userId) {
         Wallet wallet = findActiveWalletWithLock(walletId, userId);
 
@@ -184,9 +202,21 @@ public class TransactionService {
         auditService.recordAction("Wallet", walletId, "WITHDRAWAL",
                 balanceBefore.toString(), balanceAfter.toString(), userId);
 
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        notificationService.sendBoth(
+                userId, user.getEmail(), null,
+                NotificationType.TRANSACTION_WITHDRAWAL,
+                "Withdrawal Confirmed",
+                "Your withdrawal of K" + amount + " has been processed. "
+                        + "Fee: K" + fee + ". Reference: " + withdrawTx.getReference(),
+                "Withdrawal: K" + amount + " (fee: K" + fee + "). Ref: " + withdrawTx.getReference()
+        );
+
         return toResponse(withdrawTx);
     }
 
+    @CacheEvict(value = "walletBalances", allEntries = true)
     public TransactionResponse transfer(TransferRequest request, UUID userId) {
         // Find sender wallet with pessimistic lock
         Wallet senderWallet = walletRepository.findByUserId(userId)
@@ -307,6 +337,31 @@ public class TransactionService {
 
         auditService.recordAction("Wallet", receiverWalletId, "TRANSFER_CREDIT",
                 receiverBalanceBefore.toString(), receiverWallet.getBalance().toString(), userId);
+
+        User sender = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User receiver = receiverWallet.getUserId() != null
+                ? userRepository.findById(receiverWallet.getUserId()).orElse(null) : null;
+
+        notificationService.sendBoth(
+                userId, sender.getEmail(), null,
+                NotificationType.TRANSACTION_TRANSFER_SENT,
+                "Transfer Sent",
+                "You sent K" + amount + " to wallet " + receiverWalletId + ". "
+                        + "Fee: K" + fee + ". Reference: " + debitTx.getReference(),
+                "Transfer sent: K" + amount + ". Ref: " + debitTx.getReference()
+        );
+
+        if (receiver != null && receiver.getEmail() != null) {
+            notificationService.sendBoth(
+                    receiver.getId(), receiver.getEmail(), null,
+                    NotificationType.TRANSACTION_TRANSFER_RECEIVED,
+                    "Transfer Received",
+                    "You received K" + amount + " from wallet " + senderWallet.getId()
+                            + ". Reference: " + creditTx.getReference(),
+                    "Transfer received: K" + amount + ". Ref: " + creditTx.getReference()
+            );
+        }
 
         return toResponse(debitTx);
     }

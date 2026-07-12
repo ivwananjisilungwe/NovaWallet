@@ -7,6 +7,9 @@ import com.novawallet.novawallet_api.exception.DuplicateResourceException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.exception.UnauthorizedException;
 import com.novawallet.novawallet_api.notification.MailService;
+import com.novawallet.novawallet_api.notification.entity.NotificationChannel;
+import com.novawallet.novawallet_api.notification.entity.NotificationType;
+import com.novawallet.novawallet_api.notification.service.NotificationService;
 import com.novawallet.novawallet_api.security.JwtUtil;
 import com.novawallet.novawallet_api.token.entity.RefreshToken;
 import com.novawallet.novawallet_api.token.service.TokenService;
@@ -37,19 +40,22 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final TokenService tokenService;
     private final MailService mailService;
+    private final NotificationService notificationService;
 
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtUtil jwtUtil,
             TokenService tokenService,
-            MailService mailService
+            MailService mailService,
+            NotificationService notificationService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.tokenService = tokenService;
         this.mailService = mailService;
+        this.notificationService = notificationService;
     }
 
     // ==================== Register ====================
@@ -76,6 +82,9 @@ public class AuthService {
         log.info("User registered: {} (id={})", user.getEmail(), user.getId());
 
         mailService.sendVerificationEmail(user.getEmail(), user.getFirstName(), user.getVerificationToken());
+        notificationService.recordSent(user.getId(), user.getEmail(), NotificationChannel.EMAIL,
+                NotificationType.EMAIL_VERIFICATION, "NovaWallet — Verify your email address",
+                "Please verify your email address. Token: " + user.getVerificationToken());
 
         String refreshToken = tokenService.createRefreshToken(user);
 
@@ -177,6 +186,9 @@ public class AuthService {
                     userRepository.save(user);
 
                     mailService.sendPasswordResetEmail(user.getEmail(), user.getFirstName(), user.getPasswordResetToken());
+                    notificationService.recordSent(user.getId(), user.getEmail(), NotificationChannel.EMAIL,
+                            NotificationType.PASSWORD_RESET, "NovaWallet — Password Reset Request",
+                            "Password reset link. Token: " + user.getPasswordResetToken());
                     log.info("Password reset token generated for user: {}", user.getEmail());
                 });
     }

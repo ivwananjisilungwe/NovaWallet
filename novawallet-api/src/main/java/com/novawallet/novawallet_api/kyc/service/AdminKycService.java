@@ -12,6 +12,9 @@ import com.novawallet.novawallet_api.kyc.enums.KycDocumentStatus;
 import com.novawallet.novawallet_api.kyc.enums.KycStatus;
 import com.novawallet.novawallet_api.kyc.repository.KycDocumentRepository;
 import com.novawallet.novawallet_api.notification.MailService;
+import com.novawallet.novawallet_api.notification.entity.NotificationChannel;
+import com.novawallet.novawallet_api.notification.entity.NotificationType;
+import com.novawallet.novawallet_api.notification.service.NotificationService;
 import com.novawallet.novawallet_api.user.entity.User;
 import com.novawallet.novawallet_api.user.repository.UserRepository;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
@@ -42,6 +45,7 @@ public class AdminKycService {
     private final KycConfig kycConfig;
     private final FileStorageService fileStorageService;
     private final MailService mailService;
+    private final NotificationService notificationService;
 
     public AdminKycService(
             KycService kycService,
@@ -51,7 +55,8 @@ public class AdminKycService {
             AccountNumberGenerator accountNumberGenerator,
             KycConfig kycConfig,
             FileStorageService fileStorageService,
-            MailService mailService
+            MailService mailService,
+            NotificationService notificationService
     ) {
         this.kycService = kycService;
         this.userRepository = userRepository;
@@ -61,6 +66,7 @@ public class AdminKycService {
         this.kycConfig = kycConfig;
         this.fileStorageService = fileStorageService;
         this.mailService = mailService;
+        this.notificationService = notificationService;
     }
 
     // ==================== List Pending Submissions ====================
@@ -137,6 +143,9 @@ public class AdminKycService {
 
         // Send notification
         mailService.sendKycApprovedEmail(user.getEmail(), user.getFirstName(), request.tier());
+        notificationService.recordSent(user.getId(), user.getEmail(), NotificationChannel.EMAIL,
+                NotificationType.KYC_APPROVED, "NovaWallet — KYC Approved!",
+                "Your KYC has been approved. Tier: " + request.tier());
     }
 
     // ==================== Reject KYC ====================

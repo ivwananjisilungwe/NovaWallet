@@ -6,12 +6,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,4 +39,26 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
             + "AND t.type IN ('WITHDRAWAL', 'TRANSFER_DEBIT') "
             + "AND t.createdAt >= :since")
     BigDecimal sumDailyOutgoing(@Param("walletId") UUID walletId, @Param("since") LocalDateTime since);
+
+    /**
+     * Find PENDING transactions created before the given timestamp.
+     * Used by {@link PendingTransactionCleanupJob} to mark stale transactions as FAILED.
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.createdAt < :before")
+    List<Transaction> findPendingOlderThan(@Param("before") LocalDateTime before);
+
+    @Modifying(clearAutomatically = true)
+    @Query(value = """
+            UPDATE transactions t
+            SET balance_before = COALESCE(
+                (SELECT balance FROM wallets WHERE id = t.sender_wallet_id),
+                (SELECT balance FROM wallets WHERE id = t.receiver_wallet_id)
+            ),
+            balance_after = COALESCE(
+                (SELECT balance FROM wallets WHERE id = t.sender_wallet_id),
+                (SELECT balance FROM wallets WHERE id = t.receiver_wallet_id)
+            )
+            WHERE t.balance_before IS NULL OR t.balance_after IS NULL
+            """, nativeQuery = true)
+    int recalculateMissingBalances();
 }

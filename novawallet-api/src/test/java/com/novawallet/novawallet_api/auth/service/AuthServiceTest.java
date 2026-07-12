@@ -6,6 +6,11 @@ import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.DuplicateResourceException;
 import com.novawallet.novawallet_api.exception.UnauthorizedException;
 import com.novawallet.novawallet_api.notification.MailService;
+import com.novawallet.novawallet_api.notification.entity.Notification;
+import com.novawallet.novawallet_api.notification.repository.NotificationRepository;
+import com.novawallet.novawallet_api.notification.repository.NotificationAttemptRepository;
+import com.novawallet.novawallet_api.notification.service.NotificationService;
+import com.novawallet.novawallet_api.notification.service.SmsService;
 import com.novawallet.novawallet_api.security.JwtUtil;
 import com.novawallet.novawallet_api.token.entity.RefreshToken;
 import com.novawallet.novawallet_api.token.repository.RefreshTokenRepository;
@@ -46,10 +51,17 @@ class AuthServiceTest {
     private JwtUtil jwtUtil;
     @Mock
     private MailService mailService;
+    @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
+    private NotificationAttemptRepository notificationAttemptRepository;
+    @Mock
+    private SmsService smsService;
 
     private PasswordEncoder passwordEncoder;
     private TokenService tokenService;
     private AuthService authService;
+    private NotificationService notificationService;
 
     @Captor
     private ArgumentCaptor<User> userCaptor;
@@ -65,12 +77,19 @@ class AuthServiceTest {
         // We need to mock the hash/save behavior. Using spy.
         tokenService = spy(tokenService);
 
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(i -> i.getArgument(0));
+        when(notificationAttemptRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        notificationService = new NotificationService(
+                notificationRepository, notificationAttemptRepository, mailService, smsService);
+
         authService = new AuthService(
                 userRepository,
                 passwordEncoder,
                 jwtUtil,
                 tokenService,
-                mailService
+                mailService,
+                notificationService
         );
 
         when(jwtUtil.generateToken(any(), any(), any())).thenReturn("test-access-token");
