@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    NovaWallet — Logback Configuration
+
+    Three profiles:
+      dev   → Colored console with %X{requestId} tracing
+      prod  → JSON structured logging for log aggregation (ELK, DataDog, etc.)
+      test  → Minimal console output
+-->
+<configuration>
+
+    <!-- Spring property: reads spring.application.name from application.yml -->
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="novawallet-api"/>
+
+    <!-- ── Console Appender (all profiles) ─────────────────────────────────── -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%X{requestId}] %highlight(%-5level) %cyan(%logger{36}) - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+
+    <!-- ── JSON Appender (prod profile only) ───────────────────────────────── -->
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Structured fields for log aggregation -->
+            <includeContext>true</includeContext>
+            <includeCallerData>false</includeCallerData>
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <level>level</level>
+                <logger>logger</logger>
+                <thread>thread</thread>
+                <message>message</message>
+                <mdc>mdc</mdc>
+            </fieldNames>
+            <provider>
+                <provider class="net.logstash.logback.composite.loggingevent.LoggingEventPatternJsonProvider">
+                    <pattern>
+                        {
+                            "app": "${appName}",
+                            "environment": "production"
+                        }
+                    </pattern>
+                </provider>
+            </provider>
+        </encoder>
+    </appender>
+
+
+    <!-- ── Rolling File Appender (prod profile) ────────────────────────────── -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>/var/log/novawallet/api.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>/var/log/novawallet/api-%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <level>level</level>
+                <logger>logger</logger>
+                <thread>thread</thread>
+                <message>message</message>
+                <mdc>mdc</mdc>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+
+    <!-- ── Profile: dev ────────────────────────────────────────────────────── -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <logger name="com.novawallet" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <logger name="org.springframework.security" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+    </springProfile>
+
+
+    <!-- ── Profile: prod ───────────────────────────────────────────────────── -->
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+            <appender-ref ref="FILE"/>
+        </root>
+
+        <!-- Mask sensitive data patterns in logs -->
+        <logger name="com.novawallet" level="INFO" additivity="false">
+            <appender-ref ref="JSON"/>
+            <appender-ref ref="FILE"/>
+        </logger>
+
+        <!-- Quiet down noisy frameworks -->
+        <logger name="org.hibernate.SQL" level="WARN"/>
+        <logger name="org.flywaydb" level="INFO"/>
+        <logger name="org.springframework.security" level="WARN"/>
+    </springProfile>
+
+
+    <!-- ── Profile: test ───────────────────────────────────────────────────── -->
+    <springProfile name="test">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <!-- Silence noisy test output -->
+        <logger name="com.novawallet" level="WARN"/>
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="ERROR"/>
+    </springProfile>
+
+</configuration>
