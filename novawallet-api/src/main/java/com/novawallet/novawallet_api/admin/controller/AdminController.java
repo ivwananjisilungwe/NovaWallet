@@ -4,6 +4,7 @@ import com.novawallet.novawallet_api.admin.dto.FreezeWalletRequest;
 import com.novawallet.novawallet_api.admin.dto.UserSummaryResponse;
 import com.novawallet.novawallet_api.admin.service.AdminService;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
+import com.novawallet.novawallet_api.common.dto.PagedResponse;
 import com.novawallet.novawallet_api.kyc.dto.ApproveKycRequest;
 import com.novawallet.novawallet_api.kyc.dto.KycStatusResponse;
 import com.novawallet.novawallet_api.kyc.dto.RejectKycRequest;
@@ -18,6 +19,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -58,9 +62,13 @@ public class AdminController {
             )
     })
     @GetMapping("/users")
-    public ResponseEntity<ApiResponse<List<UserSummaryResponse>>> getAllUsers() {
-        List<UserSummaryResponse> users = adminService.getAllUsers();
-        return ResponseEntity.ok(ApiResponse.success(users, "Users retrieved"));
+    public ResponseEntity<ApiResponse<PagedResponse<UserSummaryResponse>>> getAllUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        PagedResponse<UserSummaryResponse> result = PagedResponse.from(adminService.getAllUsers(pageable));
+        return ResponseEntity.ok(ApiResponse.success(result, "Users retrieved"));
     }
 
     @Operation(
@@ -104,9 +112,11 @@ public class AdminController {
     })
     @PatchMapping("/users/{userId}/toggle-delete")
     public ResponseEntity<ApiResponse<Void>> toggleUserDeletedStatus(
-            @PathVariable @io.swagger.v3.oas.annotations.Parameter(description = "User UUID", required = true, example = "550e8400-e29b-41d4-a716-446655440000") UUID userId
+            @PathVariable @io.swagger.v3.oas.annotations.Parameter(description = "User UUID", required = true, example = "550e8400-e29b-41d4-a716-446655440000") UUID userId,
+            @AuthenticationPrincipal UserDetails adminDetails
     ) {
-        adminService.toggleUserDeletedStatus(userId);
+        UUID adminId = UUID.fromString(adminDetails.getUsername());
+        adminService.toggleUserDeletedStatus(userId, adminId);
         return ResponseEntity.ok(ApiResponse.success(null, "User delete status toggled"));
     }
 
@@ -252,9 +262,11 @@ public class AdminController {
     @PostMapping("/wallets/{walletId}/freeze")
     public ResponseEntity<ApiResponse<WalletResponse>> freezeWallet(
             @PathVariable @Parameter(description = "Wallet UUID", required = true) UUID walletId,
-            @Valid @RequestBody FreezeWalletRequest request
+            @Valid @RequestBody FreezeWalletRequest request,
+            @AuthenticationPrincipal UserDetails adminDetails
     ) {
-        WalletResponse wallet = walletService.freezeWallet(walletId, request.reason());
+        UUID adminId = UUID.fromString(adminDetails.getUsername());
+        WalletResponse wallet = walletService.freezeWallet(walletId, request.reason(), adminId);
         return ResponseEntity.ok(ApiResponse.success(wallet, "Wallet frozen"));
     }
 
@@ -278,9 +290,11 @@ public class AdminController {
     })
     @PostMapping("/wallets/{walletId}/unfreeze")
     public ResponseEntity<ApiResponse<WalletResponse>> unfreezeWallet(
-            @PathVariable @Parameter(description = "Wallet UUID", required = true) UUID walletId
+            @PathVariable @Parameter(description = "Wallet UUID", required = true) UUID walletId,
+            @AuthenticationPrincipal UserDetails adminDetails
     ) {
-        WalletResponse wallet = walletService.unfreezeWallet(walletId);
+        UUID adminId = UUID.fromString(adminDetails.getUsername());
+        WalletResponse wallet = walletService.unfreezeWallet(walletId, adminId);
         return ResponseEntity.ok(ApiResponse.success(wallet, "Wallet unfrozen"));
     }
 }

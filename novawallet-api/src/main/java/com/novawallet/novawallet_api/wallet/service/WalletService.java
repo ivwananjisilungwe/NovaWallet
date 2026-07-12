@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.wallet.service;
 
+import com.novawallet.novawallet_api.audit.service.AuditService;
 import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.wallet.dto.WalletResponse;
@@ -21,9 +22,11 @@ public class WalletService {
     private static final Logger log = LoggerFactory.getLogger(WalletService.class);
 
     private final WalletRepository walletRepository;
+    private final AuditService auditService;
 
-    public WalletService(WalletRepository walletRepository) {
+    public WalletService(WalletRepository walletRepository, AuditService auditService) {
         this.walletRepository = walletRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -46,7 +49,7 @@ public class WalletService {
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet not found: " + walletId));
     }
 
-    public WalletResponse freezeWallet(UUID walletId, FreezeReason reason) {
+    public WalletResponse freezeWallet(UUID walletId, FreezeReason reason, UUID adminId) {
         Wallet wallet = getWalletEntity(walletId);
         if (wallet.getStatus() == WalletStatus.FROZEN) {
             throw new BadRequestException("Wallet is already frozen");
@@ -54,11 +57,13 @@ public class WalletService {
         wallet.setStatus(WalletStatus.FROZEN);
         wallet.setFreezeReason(reason);
         wallet = walletRepository.save(wallet);
-        log.info("Wallet {} frozen. Reason: {}", walletId, reason);
+        log.info("Wallet {} frozen by admin {}. Reason: {}", walletId, adminId, reason);
+        auditService.recordAction("Wallet", walletId, "WALLET_FREEZE",
+                "ACTIVE", "FROZEN", adminId);
         return WalletResponse.from(wallet);
     }
 
-    public WalletResponse unfreezeWallet(UUID walletId) {
+    public WalletResponse unfreezeWallet(UUID walletId, UUID adminId) {
         Wallet wallet = getWalletEntity(walletId);
         if (wallet.getStatus() != WalletStatus.FROZEN) {
             throw new BadRequestException("Wallet is not frozen");
@@ -66,7 +71,9 @@ public class WalletService {
         wallet.setStatus(WalletStatus.ACTIVE);
         wallet.setFreezeReason(null);
         wallet = walletRepository.save(wallet);
-        log.info("Wallet {} unfrozen", walletId);
+        log.info("Wallet {} unfrozen by admin {}", walletId, adminId);
+        auditService.recordAction("Wallet", walletId, "WALLET_UNFREEZE",
+                "FROZEN", "ACTIVE", adminId);
         return WalletResponse.from(wallet);
     }
 }

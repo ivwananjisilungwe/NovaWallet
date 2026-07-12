@@ -16,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
@@ -65,9 +66,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setHeader("Retry-After", String.valueOf(window.toSeconds()));
             response.setContentType("application/json");
-            response.getWriter().write(
-                    "{\"success\":false,\"message\":\"Too many requests. Please try again later.\",\"code\":\"RATE_LIMITED\"}"
+            String errorJson = String.format(
+                    "{\"status\":429,\"code\":\"RATE_LIMITED\",\"message\":\"Too many requests. Please try again later.\",\"timestamp\":\"%s\",\"path\":\"%s\"}",
+                    LocalDateTime.now().toString(),
+                    request.getRequestURI()
             );
+            response.getWriter().write(errorJson);
             return;
         }
 
