@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -24,6 +25,9 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final IdempotencyFilter idempotencyFilter;
+
+    @Value("${app.cors.origins:}")
+    private String corsOrigins;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter, IdempotencyFilter idempotencyFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
@@ -80,12 +84,19 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:3000",   // React dev server
-                "http://localhost:5173",   // Vite dev server
-                "http://localhost:8100",   // Ionic dev server (Flutter web alternative)
-                "capacitor://localhost"    // Capacitor (mobile webview)
-        ));
+
+        // Use config property if set (from env var in production), fall back to dev defaults
+        if (corsOrigins != null && !corsOrigins.isBlank()) {
+            configuration.setAllowedOrigins(List.of(corsOrigins.split(",")));
+        } else {
+            configuration.setAllowedOrigins(List.of(
+                    "http://localhost:3000",   // React dev server
+                    "http://localhost:5173",   // Vite dev server
+                    "http://localhost:8100",   // Ionic dev server (Flutter web alternative)
+                    "capacitor://localhost"    // Capacitor (mobile webview)
+            ));
+        }
+
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

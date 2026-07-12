@@ -72,6 +72,12 @@ app:
       auth-max-requests: 10
       window-seconds: 60
 
+  cors:
+    origins: ${APP_CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8100,capacitor://localhost}
+
+  sms:
+    api-key: ${APP_SMS_API_KEY:}
+
   idempotency:
     ttl-hours: 24
 
