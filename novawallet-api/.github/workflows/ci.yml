@@ -1,0 +1,113 @@
+# =============================================================================
+# NovaWallet — CI/CD Pipeline
+#
+# Triggers:
+#   - Push to main/master
+#   - Pull request to main/master
+#
+# Stages:
+#   1. Test — Maven build with full test suite (112+ tests)
+#   2. Build — Create Docker image
+#   3. (Optional) Deploy — Push to container registry
+# =============================================================================
+
+name: NovaWallet CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  # Java
+  JAVA_VERSION: 17
+  # Docker image
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+
+  # ── Test ──────────────────────────────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    services:
+      # Some tests may require PostgreSQL in the future
+      # postgres:
+      #   image: postgres:16-alpine
+      #   env:
+      #     POSTGRES_DB: novawallet
+      #     POSTGRES_USER: novawallet
+      #     POSTGRES_PASSWORD: test
+      #   options: >-
+      #     --health-cmd pg_isready -U novawallet
+      #     --health-interval 10s
+      #     --health-timeout 5s
+      #     --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Run tests
+        run: mvn test -B
+        working-directory: novawallet-api
+
+      - name: Upload test results (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: novawallet-api/target/surefire-reports/
+          retention-days: 7
+
+  # ── Build Docker Image ────────────────────────────────────────────────────
+  build:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: novawallet-api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
