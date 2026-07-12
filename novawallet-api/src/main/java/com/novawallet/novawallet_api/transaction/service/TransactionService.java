@@ -7,6 +7,8 @@ import com.novawallet.novawallet_api.exception.ForbiddenException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.fee.enums.FeeType;
 import com.novawallet.novawallet_api.fee.service.FeeEngineService;
+import com.novawallet.novawallet_api.kyc.config.KycConfig;
+import com.novawallet.novawallet_api.kyc.enums.KycStatus;
 import com.novawallet.novawallet_api.transaction.dto.DepositRequest;
 import com.novawallet.novawallet_api.transaction.dto.TransactionResponse;
 import com.novawallet.novawallet_api.transaction.dto.TransferRequest;
@@ -15,6 +17,8 @@ import com.novawallet.novawallet_api.transaction.entity.Transaction;
 import com.novawallet.novawallet_api.transaction.enums.TransactionStatus;
 import com.novawallet.novawallet_api.transaction.enums.TransactionType;
 import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
+import com.novawallet.novawallet_api.user.entity.User;
+import com.novawallet.novawallet_api.user.repository.UserRepository;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
 import com.novawallet.novawallet_api.wallet.entity.WalletStatus;
 import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
@@ -26,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -40,6 +46,8 @@ public class TransactionService {
     private final AuthService authService;
     private final FeeEngineService feeEngineService;
     private final AuditService auditService;
+    private final UserRepository userRepository;
+    private final KycConfig kycConfig;
 
     public TransactionService(
             WalletRepository walletRepository,
@@ -47,7 +55,9 @@ public class TransactionService {
             TransactionReferenceGenerator referenceGenerator,
             AuthService authService,
             FeeEngineService feeEngineService,
-            AuditService auditService
+            AuditService auditService,
+            UserRepository userRepository,
+            KycConfig kycConfig
     ) {
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
@@ -55,12 +65,28 @@ public class TransactionService {
         this.authService = authService;
         this.feeEngineService = feeEngineService;
         this.auditService = auditService;
+        this.userRepository = userRepository;
+        this.kycConfig = kycConfig;
     }
 
     public TransactionResponse deposit(UUID walletId, DepositRequest request, UUID userId) {
-        Wallet wallet = findActiveWallet(walletId, userId);
+        Wallet wallet = findActiveWalletWithLock(walletId, userId);
 
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
+
+        // Enforce KYC wallet-limit: balance after deposit must not exceed tier limit
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getKycStatus() == KycStatus.APPROVED && user.getKycTier() > 0) {
+            KycConfig.TierConfig tier = kycConfig.getTier(user.getKycTier());
+            BigDecimal projectedBalance = wallet.getBalance().add(amount);
+            if (projectedBalance.compareTo(tier.getWalletLimit()) > 0) {
+                throw new BadRequestException(
+                        "Deposit would exceed KYC tier wallet limit of " + tier.getWalletLimit()
+                );
+            }
+        }
+
         BigDecimal balanceBefore = wallet.getBalance();
 
         int updated = walletRepository.updateBalance(walletId, amount);
@@ -96,11 +122,14 @@ public class TransactionService {
     }
 
     public TransactionResponse withdraw(UUID walletId, WithdrawRequest request, UUID userId) {
-        Wallet wallet = findActiveWallet(walletId, userId);
+        Wallet wallet = findActiveWalletWithLock(walletId, userId);
 
         authService.verifyPin(userId, request.pin());
 
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
+
+        // Enforce KYC daily-send-limit for outgoing transactions
+        enforceDailySendLimit(userId, walletId, amount);
 
         // Calculate fee
         BigDecimal fee = feeEngineService.calculateFee(FeeType.WITHDRAWAL, amount);
@@ -159,7 +188,7 @@ public class TransactionService {
     }
 
     public TransactionResponse transfer(TransferRequest request, UUID userId) {
-        // Find sender wallet
+        // Find sender wallet with pessimistic lock
         Wallet senderWallet = walletRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet not found for user"));
 
@@ -173,7 +202,12 @@ public class TransactionService {
             throw new BadRequestException("Cannot transfer to your own wallet");
         }
 
-        Wallet receiverWallet = walletRepository.findById(receiverWalletId)
+        // Lock sender wallet first (consistent lock order to prevent deadlocks)
+        senderWallet = walletRepository.findByIdWithLock(senderWallet.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Sender wallet not found"));
+
+        // Lock receiver wallet second
+        Wallet receiverWallet = walletRepository.findByIdWithLock(receiverWalletId)
                 .orElseThrow(() -> new ResourceNotFoundException("Receiver wallet not found"));
 
         if (receiverWallet.getStatus() != WalletStatus.ACTIVE) {
@@ -183,6 +217,9 @@ public class TransactionService {
         authService.verifyPin(userId, request.pin());
 
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
+
+        // Enforce KYC daily-send-limit for outgoing transfers
+        enforceDailySendLimit(userId, senderWallet.getId(), amount);
 
         // Calculate fee
         BigDecimal fee = feeEngineService.calculateFee(FeeType.TRANSFER, amount);
@@ -272,8 +309,12 @@ public class TransactionService {
 
     // ==================== Private helpers ====================
 
-    private Wallet findActiveWallet(UUID walletId, UUID userId) {
-        Wallet wallet = walletRepository.findById(walletId)
+    /**
+     * Finds a wallet with PESSIMISTIC_WRITE lock and validates ownership + active status.
+     * The lock prevents concurrent balance modifications (overdraft race conditions).
+     */
+    private Wallet findActiveWalletWithLock(UUID walletId, UUID userId) {
+        Wallet wallet = walletRepository.findByIdWithLock(walletId)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet not found"));
 
         if (!wallet.getUserId().equals(userId)) {
@@ -285,6 +326,35 @@ public class TransactionService {
         }
 
         return wallet;
+    }
+
+    /**
+     * Enforces the KYC daily-send-limit for outgoing transactions (withdrawals, transfers).
+     * Only enforced for users with an approved KYC tier (1+).
+     * Unverified users (tier 0, not approved) are not subject to limits during MVP.
+     */
+    private void enforceDailySendLimit(UUID userId, UUID walletId, BigDecimal amount) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Only enforce limits for users with approved KYC and an assigned tier
+        if (user.getKycStatus() != KycStatus.APPROVED || user.getKycTier() < 1) {
+            return;
+        }
+
+        KycConfig.TierConfig tier = kycConfig.getTier(user.getKycTier());
+        BigDecimal dailyLimit = tier.getDailySendLimit();
+
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        BigDecimal todaySent = transactionRepository.sumDailyOutgoing(walletId, todayStart);
+        BigDecimal projectedTotal = todaySent.add(amount);
+
+        if (projectedTotal.compareTo(dailyLimit) > 0) {
+            throw new BadRequestException(
+                    "Daily send limit of " + dailyLimit + " exceeded. "
+                            + "Already sent: " + todaySent + ", requested: " + amount
+            );
+        }
     }
 
     private TransactionResponse toResponse(Transaction tx) {

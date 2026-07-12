@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,4 +27,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
 
     @Query(value = "SELECT reference FROM transactions WHERE reference LIKE :prefix ORDER BY reference DESC LIMIT 1", nativeQuery = true)
     Optional<String> findMaxReferenceByPrefix(@Param("prefix") String prefix);
+
+    /**
+     * Sums the total outgoing transaction amount (WITHDRAWAL + TRANSFER_DEBIT)
+     * for a wallet since the given timestamp. Used for KYC daily-send-limit enforcement.
+     */
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t "
+            + "WHERE t.senderWalletId = :walletId "
+            + "AND t.type IN ('WITHDRAWAL', 'TRANSFER_DEBIT') "
+            + "AND t.createdAt >= :since")
+    BigDecimal sumDailyOutgoing(@Param("walletId") UUID walletId, @Param("since") LocalDateTime since);
 }
