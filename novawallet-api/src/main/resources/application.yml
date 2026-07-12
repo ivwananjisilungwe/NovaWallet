@@ -72,6 +72,9 @@ app:
       auth-max-requests: 10
       window-seconds: 60
 
+  idempotency:
+    ttl-hours: 24
+
   kyc:
     upload-dir: uploads/kyc
     tiers:
