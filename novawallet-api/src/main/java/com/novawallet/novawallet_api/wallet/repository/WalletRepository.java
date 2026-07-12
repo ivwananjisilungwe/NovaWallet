@@ -1,7 +1,10 @@
 package com.novawallet.novawallet_api.wallet.repository;
 
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
+import com.novawallet.novawallet_api.wallet.entity.WalletStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -21,6 +24,8 @@ public interface WalletRepository extends JpaRepository<Wallet, UUID> {
     Optional<Wallet> findByAccountNumber(String accountNumber);
 
     boolean existsByAccountNumber(String accountNumber);
+
+    Page<Wallet> findByStatus(WalletStatus status, Pageable pageable);
 
     /**
      * Atomically adjusts the wallet balance by {@code amount}.
