@@ -1,5 +1,7 @@
 package com.novawallet.novawallet_api.fee.service;
 
+import com.novawallet.novawallet_api.admin.dto.CreateFeeRequest;
+import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.fee.dto.FeeEstimateResponse;
 import com.novawallet.novawallet_api.fee.entity.FeeConfiguration;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.UUID;
 
 @Service
 public class FeeEngineService {
@@ -108,5 +111,29 @@ public class FeeEngineService {
 
     public java.util.List<FeeConfiguration> getAllConfigurations() {
         return feeConfigurationRepository.findAll();
+    }
+
+    public FeeConfiguration createConfiguration(CreateFeeRequest request) {
+        FeeType feeType;
+        try {
+            feeType = FeeType.valueOf(request.transactionType().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid transaction type: " + request.transactionType());
+        }
+
+        FeeConfiguration config = FeeConfiguration.builder()
+                .transactionType(feeType)
+                .percentageFee(request.percentageFee())
+                .flatFee(request.flatFee())
+                .minFee(request.minFee())
+                .maxFee(request.maxFee())
+                .active(true)
+                .build();
+        return feeConfigurationRepository.save(config);
+    }
+
+    public void deleteConfiguration(UUID id) {
+        FeeConfiguration existing = getConfigurationById(id);
+        feeConfigurationRepository.delete(existing);
     }
 }

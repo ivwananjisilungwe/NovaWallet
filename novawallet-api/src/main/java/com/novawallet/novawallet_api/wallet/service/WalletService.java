@@ -5,11 +5,14 @@ import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.wallet.dto.WalletResponse;
 import com.novawallet.novawallet_api.wallet.entity.FreezeReason;
+import com.novawallet.novawallet_api.admin.dto.WalletAdminResponse;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
 import com.novawallet.novawallet_api.wallet.entity.WalletStatus;
 import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +50,17 @@ public class WalletService {
     public Wallet getWalletEntity(UUID walletId) {
         return walletRepository.findById(walletId)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet not found: " + walletId));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<WalletAdminResponse> getAllWallets(Pageable pageable, WalletStatus statusFilter) {
+        Page<Wallet> wallets;
+        if (statusFilter != null) {
+            wallets = walletRepository.findByStatus(statusFilter, pageable);
+        } else {
+            wallets = walletRepository.findAll(pageable);
+        }
+        return wallets.map(WalletAdminResponse::from);
     }
 
     public WalletResponse freezeWallet(UUID walletId, FreezeReason reason, UUID adminId) {
