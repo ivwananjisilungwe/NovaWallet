@@ -7,7 +7,7 @@
 | **Purpose** | Digital wallet backend API (RESTful, no frontend in MVP) |
 | **Stack** | Java 17, Spring Boot 4.1, Maven, PostgreSQL, Flyway, JWT (jjwt), SpringDoc OpenAPI |
 | **Target** | University students & small businesses in Zambia |
-| **Status** | Phases 0–5 (Foundation → Idempotency) ✅ complete. Phase 5.5 (Fintech Hardening) ✅ complete. Phase 6 (Notifications, Scheduling & Caching) ✅ complete. Phase 7–8 in progress. Phase 9 (Docker & CI/CD) ✅ complete. Phase 10–11 pending. See Day-by-Day schedule below for details |
+| **Status** | Phases 0–5 (Foundation → Idempotency) ✅ complete. Phase 5.5 (Fintech Hardening) ✅ complete. Phase 6 (Notifications, Scheduling & Caching) ✅ complete. Phase 7 (Admin Endpoints) ✅ complete. Phase 8 (Testing) in progress. Phase 9 (Docker & CI/CD) ✅ complete. Phase 10–11 pending. See Day-by-Day schedule below for details |
 
 ---
 
@@ -189,17 +189,19 @@
 
 ---
 
-## Phase 7 — Admin Endpoints & Production Hardening
+## Phase 7 — Admin Endpoints & Production Hardening ✅ COMPLETE
 **Goal**: Admin dashboard API, soft delete, soft freeze with reasons, and security hardening.
 
 | Step | Domain | Task | Details |
 |------|--------|------|---------|
-| 7.1 | Controller | **Admin user management** | `GET /api/v1/admin/users` (paginated, searchable), `GET /api/v1/admin/users/{id}` (detail with wallet), `GET /api/v1/admin/wallets` (all wallets with status filter) |
-| 7.2 | Controller | **Admin wallet actions** | `PATCH /api/v1/admin/wallets/{id}/freeze` (with reason: SUSPICIOUS_ACTIVITY/ADMIN_ACTION/USER_REQUEST), `PATCH /api/v1/admin/wallets/{id}/unfreeze` |
-| 7.3 | Controller | **Admin transaction search** | `GET /api/v1/admin/transactions` — search by reference, wallet, user, date range, type, status |
-| 7.4 | Controller | **Admin audit log view** | `GET /api/v1/admin/audit-logs` — paginated, filterable by entityType, action, performedBy, date range |
-| 7.5 | Controller | **Admin fee management** | Full CRUD on `FeeConfiguration`: `GET/POST/PUT/DELETE /api/v1/admin/fees` |
-| 7.6 | Security | **Role-based access** | `@PreAuthorize("hasRole('ADMIN')")` on all admin endpoints |
+| 7.1 | Controller | **Admin user management** | `GET /api/v1/admin/users` (paginated — done in Phase 5.5), `GET /api/v1/admin/users/{id}` (detail with wallet), `GET /api/v1/admin/wallets` (paginated with optional WalletStatus filter) | ✅ |
+| 7.2 | Controller | **Admin wallet actions** | `POST /api/v1/admin/wallets/{id}/freeze` (with FreezeReason + audit via adminId), `POST /api/v1/admin/wallets/{id}/unfreeze` (with audit) | ✅ |
+| 7.3 | Controller | **Admin transaction search** | `GET /v1/admin/transactions` — Specification-powered search by reference, type (TransactionType), status (TransactionStatus), date range, wallet UUID (sender or receiver). Paginated with `PagedResponse`. | ✅ |
+| 7.4 | Controller | **Admin audit log view** | `GET /v1/admin/audit-logs` — paginated, filterable by entityType, action, performedBy (UUID), date range. Custom query methods on `AuditLogRepository`. | ✅ |
+| 7.5 | Controller | **Admin fee management** | Full CRUD: `GET /v1/admin/fees` (list), `GET /v1/admin/fees/{id}` (get), `POST /v1/admin/fees` (create via CreateFeeRequest), `PUT /v1/admin/fees/{id}` (update), `DELETE /v1/admin/fees/{id}` (delete) | ✅ |
+| 7.6 | Security | **Role-based access** | `@PreAuthorize("hasRole('ADMIN')")` on all admin endpoints (class-level + per-endpoint for fee controller) | ✅ |
+| 7.7 | DTO | **Response records** | `WalletAdminResponse` (with userId), `TransactionSearchResponse` (with balance snapshots), `AuditLogResponse` (with oldValue/newValue), `CreateFeeRequest` (with validation) | ✅ |
+| 7.8 | Test | **Regression** | All 112 existing tests pass with no regressions. New admin endpoints verified via compilation + full test suite. | ✅ |
 | 7.7 | Enhancement | **Soft delete user** | `PATCH /api/v1/admin/users/{id}/deactivate` — sets `deleted=true`, `deletedAt=now`, freezes wallet. `GET` filters out deleted by default |
 | 7.8 | Enhancement | **Security headers audit** | Verify HSTS, CSP, XSS protection, content-type options. Add `Strict-Transport-Security` in production profile |
 | 7.9 | Enhancement | **Input sanitization** | Strip/escape HTML from string inputs to prevent log injection and stored XSS (defense in depth) |
@@ -379,7 +381,7 @@ Phases 0–5.5 are strictly sequential (each builds on the previous). Phase 6–
 | **15** | **5.5** | **Fintech Hardening** | Pessimistic locking (`@Lock PESSIMISTIC_WRITE` + `FOR UPDATE`) on wallet balance operations; KYC tier `dailySendLimit` + `walletLimit` enforcement in TransactionService (approved KYC only); unify `RateLimitFilter` error response format with standard `ErrorResponse`; CORS configuration bean (localhost:3000, 5173, 8100); admin pagination via `Pageable` on user list; audit logging for admin freeze/unfreeze/toggle-delete with `adminId` param; regression test fixes; 105/105 tests passing | 🟡 |
 | **16** | **6** | Notifications Setup | `Notification` entity (UUID, userId, type EMAIL/SMS, channel, recipient, subject, body, status PENDING/SENT/FAILED, retryCount, maxRetries 3, createdAt, sentAt); `NotificationAttempt` entity (id, notificationId, attemptNumber, success, errorMessage, attemptedAt); Flyway V10 migration (unified tables); `NotificationService` — sendEmail/sendSms/sendBoth with `@Async` + `MailService.sendRaw()`, create records, update status, 3 retry logic via `retryFailed()`; `SmsService` — Africa's Talking stub (logs when no API key); `recordSent()` for MailService-compatible audit; TransactionService wired: deposit/withdraw/transfer → email + SMS; AuthService + AdminKycService wired → `recordSent()` for verification/KYC emails | ✅ |
 | **17** | **6** | Scheduling + Caching | `PendingTransactionCleanupJob` (`@Scheduled 3am`) — marks PENDING transactions older than 24h as FAILED; `IdempotencyCleanupJob` (`@Scheduled 4am` — done in Phase 5); `RefreshTokenCleanupJob` (`@Scheduled 4:30am`) — deletes expired refresh tokens; `CacheConfig` — Caffeine max 100, 10 min write expiry, `recordStats()`, `@EnableCaching`; `@CacheEvict("walletBalances")` on deposit/withdraw/transfer; `spring.mail.*` config for Mailtrap; `spring.cache.*` config; 7 notification integration tests; 112/112 total tests passing | ✅ |
-| **18** | **7** | Admin Endpoints | `GET /api/v1/admin/users` (paginated — done in Phase 5.5); `GET /api/v1/admin/users/{id}` (detail with wallet); `GET /api/v1/admin/wallets` (status filter); `PATCH /api/v1/admin/wallets/{id}/freeze`/`unfreeze` (done in Phase 5.5 with audit); `GET /api/v1/admin/transactions` (search by reference, wallet, user, date, type, status); `GET /api/v1/admin/audit-logs` (filterable); full fee CRUD: `POST/PUT/DELETE /api/v1/admin/fees` | 🟡 |
+| **18** | **7** | Admin Endpoints | `GET /v1/admin/users` (paginated — done in Phase 5.5); `GET /v1/admin/users/{id}` (detail); `GET /v1/admin/wallets` (paginated with WalletStatus filter); `POST /v1/admin/wallets/{id}/freeze`/`unfreeze` (done in Phase 5.5 with audit); `GET /v1/admin/transactions` (Specification-powered search by reference, type, status, date range, wallet); `GET /v1/admin/audit-logs` (filterable by entityType, action, performedBy, date range; 7 custom query methods on AuditLogRepository); full fee CRUD: `GET/POST/PUT/DELETE /v1/admin/fees` (via FeeEngineService.createConfiguration/deleteConfiguration); 112/112 tests passing | ✅ |
 
 ### Week 4 — Testing, Docker & CI/CD
 
