@@ -13,6 +13,11 @@ target/
 .omo/
 .opencode/
 node_modules/
+.claude/
+.playwright-mcp/
+
+# ── Design tool exports (duplicate of .planning/prompts/) ──────────
+stitch_duplicate_of_novawallet/
 
 # ── Session transcripts ────────────────────────────────────────────
 session-*.md
