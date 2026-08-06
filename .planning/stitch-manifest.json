@@ -1,0 +1,403 @@
+{
+  "screens": [
+    {
+      "slug": "01-register",
+      "file": ".planning/prompts/01-register.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/6501dead94264d9cae3e04b1153f2ab0"
+      ],
+      "note": "generated via initial test call (registration)"
+    },
+    {
+      "slug": "01-onboarding",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/01-onboarding.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/dd7837068b964552bedb0277d686374b",
+        "projects/11542754846512650236/screens/48eb651f24c44f129402614303b8c59d",
+        "projects/11542754846512650236/screens/69d96917ef00402c9939be85b7e53369"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "02-login",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/02-login.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/7d90d23fad6b4706b1ecb5e9b6b567ce"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "03-forgot-password",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/03-forgot-password.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/7d8dac65778b4eb6a27c222bab1a74cd"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "04-reset-password",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/04-reset-password.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/0517ae7d8c2648be842652840bbaebd6"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "05-email-verify",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/05-email-verify.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/70eff07557b14472991c5823fd0f8b97"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "06-set-pin",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/06-set-pin.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/5c85d5e4796541a4a927d48e564f83ea"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "07-home-dashboard",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/07-home-dashboard.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/e4826006782a46488465c78c08cb3c50"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "08-transaction-history",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/08-transaction-history.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/deccb94af0694c85a4ca7f702f24da26"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "09-transaction-detail",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/09-transaction-detail.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/d07133f35f3c4bbe8e52ed99c22e7f00"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "10-deposit",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/10-deposit.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/40acab9bafaa4112aaa9361308d49f86"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "11-withdraw",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/11-withdraw.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/a06b0fca36a14b95a694782554946555"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "retried successfully"
+    },
+    {
+      "slug": "12-send-transfer",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/12-send-transfer.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/2010684831f342e7a28db06fcc609d1d"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "13-transfer-confirm-pin",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/13-transfer-confirm-pin.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/89101c2f61e14b23b52d6009c53d9411"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "14-fee-estimate",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/14-fee-estimate.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/523ca4991edb4e8b849ac775f5ec5b89"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "15-success",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/15-success.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/69573e803e3848e48d984ef2d9192a18",
+        "projects/11542754846512650236/screens/c03b3e8f035141bf946b0f2fff684f48"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "16-kyc-status",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/16-kyc-status.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/a5e052a73cdb4cf78a5c09773a089353"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "17-kyc-upload",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/17-kyc-upload.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/dc2df7301d43457aa993e4cb014203de"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "18-profile-settings",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/18-profile-settings.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/c3d2cad654a0488299d56ea318b5ca56"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "19-edit-profile",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/19-edit-profile.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/5160d7476cd042e69639b5010a644d62"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "20-virtual-cards",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/20-virtual-cards.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/7ff7db12083e41dbb847774af0295a67"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "21-admin-dashboard",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/21-admin-dashboard.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/b7d750ec00044dafaa1487a0dad6933b"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "22-admin-kyc-review",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/22-admin-kyc-review.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/b5549efdb14a4f3f9d25ebcd5a547ece"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "23-admin-users",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/23-admin-users.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/c0f752277d4144a0bc5cea2d4d27ae1f"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "24-admin-transactions",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/24-admin-transactions.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/ac5841b2920443dc8057abd620ed46bc"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "25-admin-fees",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/25-admin-fees.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/ecea6792b5f1476b9b3ee00679e36f4f"
+      ],
+      "exit": 0,
+      "log": ""
+    },
+    {
+      "slug": "26-notifications",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/26-notifications.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/575595526f0142f3bde0fd10824c4f46"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "verified via get_screen 2026-08-06"
+    },
+    {
+      "slug": "27-transaction-filters",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/27-transaction-filters.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/5f9c47fe3fb947fabd95d2bc721ca3dc"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "retried 15:38, verified via get_screen 2026-08-06"
+    },
+    {
+      "slug": "28-statements",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/28-statements.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/a22b6c7109014fa18fec4098ff492283"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "verified via get_screen 2026-08-06"
+    },
+    {
+      "slug": "29-buy-airtime",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/29-buy-airtime.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/cd23f376be8c4b3fb06d12ba9cd83c7d"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "verified via get_screen 2026-08-06"
+    },
+    {
+      "slug": "30-empty-state",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/30-empty-state.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/1a65e87a7bbc47c182ac900f5f236edb"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "verified via get_screen 2026-08-06"
+    },
+    {
+      "slug": "31-error-state",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/31-error-state.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/f4380527840a4a68b71e0b08fd470301",
+        "projects/11542754846512650236/screens/6afa498df4dc4854860a4b921e56b486"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "2 variants (network error + offline dashboard), verified 2026-08-06"
+    },
+    {
+      "slug": "32-loading-state",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/32-loading-state.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/fc95bf4b3f4c405bba0b0327b454185d",
+        "projects/11542754846512650236/screens/d52957736ab841aeb2ce010077aa9f96"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "2 variants (shader + processing payment), verified 2026-08-06"
+    },
+    {
+      "slug": "33-security-center",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/33-security-center.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/d5e5e0ce2e1b415e91d271ee613d9017"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "verified via get_screen 2026-08-06"
+    },
+    {
+      "slug": "34-fee-disclosure",
+      "file": "/media/ivwananji-silungwe/DEVELOPMENT/PROGRAMMING/PROJECTS/NovaWallet/.planning/prompts/34-fee-disclosure.txt",
+      "ok": true,
+      "isError": false,
+      "screenNames": [
+        "projects/11542754846512650236/screens/cb16f32d38644e57b2573ec8e176092b"
+      ],
+      "exit": 0,
+      "log": "",
+      "note": "verified via get_screen 2026-08-06"
+    }
+  ]
+}

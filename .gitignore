@@ -1,0 +1,32 @@
+# ── Build artifacts ────────────────────────────────────────────────
+target/
+*.class
+
+# ── IDE / editor ───────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# ── Tooling state & caches (regenerable) ───────────────────────────
+.codegraph/
+.omo/
+.opencode/
+node_modules/
+
+# ── Session transcripts ────────────────────────────────────────────
+session-*.md
+
+# ── Runtime data & user uploads (PII — never commit) ───────────────
+uploads/
+
+# ── Logs ───────────────────────────────────────────────────────────
+*.log
+
+# ── Local environment files ────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── OS ─────────────────────────────────────────────────────────────
+Thumbs.db
