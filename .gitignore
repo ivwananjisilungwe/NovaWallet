@@ -20,7 +20,7 @@ node_modules/
 stitch_duplicate_of_novawallet/
 
 # ── Session transcripts ────────────────────────────────────────────
-session-*.md
+session-ses_*.md
 
 # ── Runtime data & user uploads (PII — never commit) ───────────────
 uploads/
