@@ -87,7 +87,8 @@ app:
     first-name: ${APP_ADMIN_FIRST_NAME:Admin}
     last-name: ${APP_ADMIN_LAST_NAME:User}
     email: ${APP_ADMIN_EMAIL:admin@novawallet.com}
-    password: ${APP_ADMIN_PASSWORD:Admin@123}
+    # Required — fail fast: the app must not boot with a known default admin password
+    password: ${APP_ADMIN_PASSWORD}
     phone: ${APP_ADMIN_PHONE:+260000000000}
 
   mail:

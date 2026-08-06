@@ -62,7 +62,7 @@ public class TransactionHistoryService {
                 pageable
         );
 
-        return PagedResponse.from(transactions.map(this::toResponse));
+        return PagedResponse.from(transactions.map(TransactionResponse::from));
     }
 
     public TransactionResponse getTransactionByReference(String reference, UUID userId) {
@@ -80,7 +80,7 @@ public class TransactionHistoryService {
             throw new ForbiddenException("Transaction does not belong to you");
         }
 
-        return toResponse(transaction);
+        return TransactionResponse.from(transaction);
     }
 
     public WalletResponse getWalletBalance(UUID walletId, UUID userId) {
@@ -99,21 +99,5 @@ public class TransactionHistoryService {
         }
 
         return wallet;
-    }
-
-    private TransactionResponse toResponse(Transaction tx) {
-        return new TransactionResponse(
-                tx.getId(),
-                tx.getReference(),
-                tx.getType().name(),
-                tx.getAmount(),
-                tx.getBalanceBefore(),
-                tx.getBalanceAfter(),
-                tx.getStatus().name(),
-                tx.getDescription(),
-                tx.getSenderWalletId(),
-                tx.getReceiverWalletId(),
-                tx.getCreatedAt()
-        );
     }
 }

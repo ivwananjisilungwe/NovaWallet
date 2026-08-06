@@ -1,5 +1,7 @@
 package com.novawallet.novawallet_api.transaction.dto;
 
+import com.novawallet.novawallet_api.transaction.entity.Transaction;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
@@ -41,4 +43,20 @@ public record TransactionResponse(
 
         @Schema(description = "When the transaction occurred")
         LocalDateTime createdAt
-) {}
+) {
+    public static TransactionResponse from(Transaction tx) {
+        return new TransactionResponse(
+                tx.getId(),
+                tx.getReference(),
+                tx.getType().name(),
+                tx.getAmount(),
+                tx.getBalanceBefore(),
+                tx.getBalanceAfter(),
+                tx.getStatus().name(),
+                tx.getDescription(),
+                tx.getSenderWalletId(),
+                tx.getReceiverWalletId(),
+                tx.getCreatedAt()
+        );
+    }
+}
