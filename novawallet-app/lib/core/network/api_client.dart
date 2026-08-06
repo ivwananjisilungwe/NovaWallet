@@ -63,9 +63,11 @@ class ApiClient {
     Map<String, dynamic>? query,
     T Function(dynamic json)? parser,
   }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      path,
-      queryParameters: query,
+    final res = await _guard(
+      () => _dio.get<Map<String, dynamic>>(
+        path,
+        queryParameters: query,
+      ),
     );
     return _unwrap(res.data, parser);
   }
@@ -78,11 +80,13 @@ class ApiClient {
     T Function(dynamic json)? parser,
     String? idempotencyKey,
   }) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      path,
-      data: body,
-      queryParameters: query,
-      options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+    final res = await _guard(
+      () => _dio.post<Map<String, dynamic>>(
+        path,
+        data: body,
+        queryParameters: query,
+        options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+      ),
     );
     return _unwrap(res.data, parser);
   }
@@ -94,10 +98,12 @@ class ApiClient {
     T Function(dynamic json)? parser,
     String? idempotencyKey,
   }) async {
-    final res = await _dio.put<Map<String, dynamic>>(
-      path,
-      data: body,
-      options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+    final res = await _guard(
+      () => _dio.put<Map<String, dynamic>>(
+        path,
+        data: body,
+        options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+      ),
     );
     return _unwrap(res.data, parser);
   }
@@ -109,10 +115,12 @@ class ApiClient {
     T Function(dynamic json)? parser,
     String? idempotencyKey,
   }) async {
-    final res = await _dio.patch<Map<String, dynamic>>(
-      path,
-      data: body,
-      options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+    final res = await _guard(
+      () => _dio.patch<Map<String, dynamic>>(
+        path,
+        data: body,
+        options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+      ),
     );
     return _unwrap(res.data, parser);
   }
@@ -123,9 +131,11 @@ class ApiClient {
     T Function(dynamic json)? parser,
     String? idempotencyKey,
   }) async {
-    final res = await _dio.delete<Map<String, dynamic>>(
-      path,
-      options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+    final res = await _guard(
+      () => _dio.delete<Map<String, dynamic>>(
+        path,
+        options: Options(headers: _idempotencyHeaders(idempotencyKey)),
+      ),
     );
     return _unwrap(res.data, parser);
   }
@@ -143,19 +153,23 @@ class ApiClient {
       fileFieldName: file,
       ...?fields,
     });
-    final res = await _dio.post<Map<String, dynamic>>(
-      path,
-      data: form,
-      options: Options(headers: {'Content-Type': 'multipart/form-data'}),
+    final res = await _guard(
+      () => _dio.post<Map<String, dynamic>>(
+        path,
+        data: form,
+        options: Options(headers: {'Content-Type': 'multipart/form-data'}),
+      ),
     );
     return _unwrap(res.data, parser);
   }
 
   /// Downloads a raw byte payload (e.g. KYC document files).
   Future<List<int>> getBytes(String path) async {
-    final res = await _dio.get<List<int>>(
-      path,
-      options: Options(responseType: ResponseType.bytes),
+    final res = await _guard(
+      () => _dio.get<List<int>>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      ),
     );
     return res.data ?? const [];
   }
@@ -235,6 +249,19 @@ class ApiClient {
     }
     final data = body['data'];
     return data == null || parser == null ? null : parser(data);
+  }
+
+  /// Runs a Dio call and re-throws the normalized [ApiException] that
+  /// [_ErrorInterceptor] stashed on `DioException.error`, so the rest of the
+  /// app can `on ApiException catch` directly.
+  Future<T> _guard<T>(Future<T> Function() run) async {
+    try {
+      return await run();
+    } on DioException catch (e) {
+      final normalized = e.error;
+      if (normalized is ApiException) throw normalized;
+      rethrow;
+    }
   }
 
   Map<String, String> _idempotencyHeaders(String? providedKey) {
