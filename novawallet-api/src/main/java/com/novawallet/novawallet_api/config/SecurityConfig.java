@@ -17,6 +17,11 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter;
+import org.springframework.security.web.header.writers.ContentSecurityPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 
 import java.util.List;
 
@@ -56,9 +61,31 @@ public class SecurityConfig {
                         .xssProtection(xss -> xss
                                 .headerValue(XXssProtectionHeaderWriter.HeaderValue.ENABLED_MODE_BLOCK)
                         )
-                        .contentSecurityPolicy(csp -> csp
-                                .policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; sandbox")
-                        )
+                        // Swagger UI needs its JS/CSS/images — the strict API CSP
+                        // (default-src 'none' + sandbox) would block them all,
+                        // rendering a blank page. Apply a same-origin CSP to the
+                        // swagger-ui paths only.
+                        .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
+                                new OrRequestMatcher(
+                                        new AntPathRequestMatcher("/api/swagger-ui/**"),
+                                        new AntPathRequestMatcher("/api/swagger-ui.html")
+                                ),
+                                new ContentSecurityPolicyHeaderWriter(
+                                        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                                                + "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                                                + "font-src 'self' data:; frame-ancestors 'self'; "
+                                                + "base-uri 'self'; form-action 'self'"
+                                )
+                        ))
+                        .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
+                                new NegatedRequestMatcher(new OrRequestMatcher(
+                                        new AntPathRequestMatcher("/api/swagger-ui/**"),
+                                        new AntPathRequestMatcher("/api/swagger-ui.html")
+                                )),
+                                new ContentSecurityPolicyHeaderWriter(
+                                        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; sandbox"
+                                )
+                        ))
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
