@@ -1,6 +1,7 @@
 package com.novawallet.novawallet_api.user.controller;
 
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
+import com.novawallet.novawallet_api.user.dto.request.ChangePasswordRequest;
 import com.novawallet.novawallet_api.user.dto.request.UpdateProfileRequest;
 import com.novawallet.novawallet_api.user.dto.response.UserProfileResponse;
 import com.novawallet.novawallet_api.user.service.UserService;
@@ -79,6 +80,32 @@ public class UserController {
         UUID userId = extractUserId(userDetails);
         UserProfileResponse profile = userService.updateProfile(userId, request);
         return ResponseEntity.ok(ApiResponse.success(profile, "Profile updated"));
+    }
+
+    @Operation(
+            summary = "Change password",
+            description = "Changes the authenticated user's password. Requires the current password and a new password (min 8 characters). Requires JWT token."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "Password changed",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "Invalid input"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "Unauthorized or current password is incorrect"
+            )
+    })
+    @PostMapping("/me/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        UUID userId = extractUserId(userDetails);
+        userService.changePassword(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(null, "Password changed successfully"));
     }
 
     private UUID extractUserId(UserDetails userDetails) {
