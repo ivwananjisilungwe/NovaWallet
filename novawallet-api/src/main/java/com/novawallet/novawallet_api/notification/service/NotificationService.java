@@ -56,15 +56,21 @@ public class NotificationService {
 
     /**
      * Send an SMS notification asynchronously.
+     * Skips delivery if phoneNumber is null or blank.
      */
     @Async
     public void sendSms(UUID userId, String phoneNumber, NotificationType type, String message) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            log.debug("Skipping SMS notification for user {} — no phone number", userId);
+            return;
+        }
         Notification notification = createNotification(userId, phoneNumber, NotificationChannel.SMS, type, null, message);
         deliver(notification);
     }
 
     /**
      * Send both email and SMS for the same event.
+     * SMS is skipped if phoneNumber is null or blank.
      */
     @Async
     public void sendBoth(UUID userId, String email, String phoneNumber, NotificationType type,
