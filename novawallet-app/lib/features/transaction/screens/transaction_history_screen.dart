@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/nova_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
-import '../models/transaction.dart';
 import '../providers/transaction_provider.dart';
 import '../../wallet/providers/wallet_provider.dart';
+import '../providers/transaction_provider.dart' show transactionPaginationProvider, TransactionPaginationState;
 
 /// Full transaction history (per design 08).
 class TransactionHistoryScreen extends ConsumerWidget {
@@ -16,9 +16,9 @@ class TransactionHistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final wallet = ref.watch(walletProvider).valueOrNull;
-    final txsAsync = wallet == null
-        ? const AsyncValue<List<WalletTransaction>>.loading()
-        : ref.watch(transactionsProvider(wallet.id));
+    final pagination = wallet == null
+        ? const TransactionPaginationState()
+        : ref.watch(transactionPaginationProvider(wallet.id));
 
     return Scaffold(
       backgroundColor: NovaColors.background,
@@ -26,49 +26,54 @@ class TransactionHistoryScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           if (wallet != null) {
-            ref.invalidate(transactionsProvider(wallet.id));
+            ref.read(transactionPaginationProvider(wallet.id).notifier).refresh();
           }
         },
-        child: txsAsync.when(
-          loading: () => const LoadingView(message: 'Loading…'),
-          error: (e, _) => ListView(
-            children: const [
-              SizedBox(height: 120),
-              ErrorStateView(title: 'Couldn\'t load', message: 'Pull to retry.'),
-            ],
-          ),
-          data: (txs) {
-            if (txs.isEmpty) {
-              return ListView(
-                children: const [
-                  SizedBox(height: 120),
-                  EmptyStateView(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'No transactions yet',
-                    message: 'Your activity will appear here.',
-                  ),
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            if (pagination.transactions.isEmpty && !pagination.isLoadingMore)
+              const EmptyStateView(
+                icon: Icons.receipt_long_outlined,
+                title: 'No transactions yet',
+                message: 'Your activity will appear here.',
+              )
+            else
+              Column(
+                children: [
+                  const SectionHeader(title: 'All activity'),
+                  ...pagination.transactions.map((tx) {
+                    return TransactionTile(
+                      title: tx.displayTitle,
+                      subtitle: formatRelativeDate(tx.createdAt),
+                      amountText: formatZmw(tx.amount),
+                      incoming: tx.isIncoming,
+                      onTap: () => context.push('/transactions/${tx.reference}'),
+                    );
+                  }),
+                  if (pagination.isLoadingMore)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (pagination.hasMore && wallet != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: TextButton(
+                          onPressed: () => ref.read(transactionPaginationProvider(wallet.id).notifier).loadMore(),
+                          child: const Text('Load more'),
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: Text('No more transactions')),
+                    ),
                 ],
-              );
-            }
-            return ListView.separated(
-              padding: const EdgeInsets.all(20),
-              itemCount: txs.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return const SectionHeader(title: 'All activity');
-                }
-                final tx = txs[i - 1];
-                return TransactionTile(
-                  title: tx.displayTitle,
-                  subtitle: formatRelativeDate(tx.createdAt),
-                  amountText: formatZmw(tx.amount),
-                  incoming: tx.isIncoming,
-                  onTap: () => context.push('/transactions/${tx.reference}'),
-                );
-              },
-            );
-          },
+              ),
+          ],
         ),
       ),
     );

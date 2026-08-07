@@ -12,15 +12,16 @@ class TransactionRepository {
 
   final ApiClient _api;
 
-  Future<List<WalletTransaction>> getHistory(String walletId) async {
-    final page = await _api.get<PagedResponse<WalletTransaction>>(
+  Future<List<WalletTransaction>> getHistory(String walletId, {int page = 0, int size = 20}) async {
+    final resp = await _api.get<PagedResponse<WalletTransaction>>(
       '/v1/wallets/$walletId/transactions',
+      query: {'page': page, 'size': size},
       parser: (json) => PagedResponse.fromJson(
         json as Map<String, dynamic>,
         (item) => WalletTransaction.fromJson(item as Map<String, dynamic>),
       ),
     );
-    return page?.items ?? const [];
+    return resp?.items ?? const [];
   }
 
   Future<WalletTransaction> getByReference(String reference) async {

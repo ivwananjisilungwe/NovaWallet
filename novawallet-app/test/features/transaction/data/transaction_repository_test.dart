@@ -46,6 +46,7 @@ void main() {
         when(
           () => mockApi.get<PagedResponse<WalletTransaction>>(
             '/v1/wallets/wallet123/transactions',
+            query: any(named: 'query'),
             parser: any(named: 'parser'),
           ),
         ).thenAnswer((_) async => testPage);
@@ -56,6 +57,7 @@ void main() {
         verify(
           () => mockApi.get<PagedResponse<WalletTransaction>>(
             '/v1/wallets/wallet123/transactions',
+            query: any(named: 'query'),
             parser: any(named: 'parser'),
           ),
         ).called(1);
@@ -65,6 +67,7 @@ void main() {
         when(
           () => mockApi.get<PagedResponse<WalletTransaction>>(
             '/v1/wallets/wallet123/transactions',
+            query: any(named: 'query'),
             parser: any(named: 'parser'),
           ),
         ).thenAnswer((_) async => null);
@@ -75,6 +78,7 @@ void main() {
         verify(
           () => mockApi.get<PagedResponse<WalletTransaction>>(
             '/v1/wallets/wallet123/transactions',
+            query: any(named: 'query'),
             parser: any(named: 'parser'),
           ),
         ).called(1);
@@ -92,6 +96,7 @@ void main() {
         when(
           () => mockApi.get<PagedResponse<WalletTransaction>>(
             '/v1/wallets/wallet123/transactions',
+            query: any(named: 'query'),
             parser: any(named: 'parser'),
           ),
         ).thenAnswer((_) async => emptyPage);
@@ -99,6 +104,48 @@ void main() {
         final result = await repository.getHistory('wallet123');
 
         expect(result, isEmpty);
+      });
+
+      test('GETs /v1/wallets/{id}/transactions with page and size query params', () async {
+        when(
+          () => mockApi.get<PagedResponse<WalletTransaction>>(
+            '/v1/wallets/wallet123/transactions',
+            query: {'page': 2, 'size': 50},
+            parser: any(named: 'parser'),
+          ),
+        ).thenAnswer((_) async => testPage);
+
+        final result = await repository.getHistory('wallet123', page: 2, size: 50);
+
+        expect(result, equals([testTransaction]));
+        verify(
+          () => mockApi.get<PagedResponse<WalletTransaction>>(
+            '/v1/wallets/wallet123/transactions',
+            query: {'page': 2, 'size': 50},
+            parser: any(named: 'parser'),
+          ),
+        ).called(1);
+      });
+
+      test('uses default page and size when not provided', () async {
+        when(
+          () => mockApi.get<PagedResponse<WalletTransaction>>(
+            '/v1/wallets/wallet123/transactions',
+            query: any(named: 'query'),
+            parser: any(named: 'parser'),
+          ),
+        ).thenAnswer((_) async => testPage);
+
+        final result = await repository.getHistory('wallet123');
+
+        expect(result, equals([testTransaction]));
+        verify(
+          () => mockApi.get<PagedResponse<WalletTransaction>>(
+            '/v1/wallets/wallet123/transactions',
+            query: any(named: 'query'),
+            parser: any(named: 'parser'),
+          ),
+        ).called(1);
       });
     });
 

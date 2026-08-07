@@ -23,6 +23,7 @@ class RegisterScreen extends ConsumerStatefulWidget {
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _phone = TextEditingController();
   bool _obscure = true;
   bool _agree = false;
   bool _submitting = false;
@@ -31,6 +32,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
@@ -43,6 +45,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     if (pw.length < 8) {
       _toast('Password must be at least 8 characters.');
+      return;
+    }
+    final phone = _phone.text.trim();
+    if (phone.isEmpty) {
+      _toast('Enter your phone number.');
+      return;
+    }
+    if (!phone.startsWith('+')) {
+      _toast('Phone number must start with + (e.g. +260 97 000 0000).');
       return;
     }
     if (!_agree) {
@@ -60,7 +71,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             firstName: firstName,
             lastName: second.isEmpty ? firstName : second,
             email: email,
-            phone: '+260700000000',
+            phone: phone,
             password: pw,
           );
       if (!mounted) return;
@@ -126,7 +137,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _phone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone number',
+                  hintText: '+260 97 000 0000',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+                ),
+              ),
+              const SizedBox(height: 16),
               CheckboxListTile(
                 value: _agree,
                 onChanged: (v) => setState(() => _agree = v ?? false),
