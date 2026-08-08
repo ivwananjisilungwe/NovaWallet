@@ -18,8 +18,9 @@ class KycRepository {
       '/v1/kyc/status',
       parser: (json) => KycStatus.fromJson(json as Map<String, dynamic>),
     );
-    if (status == null)
+    if (status == null) {
       throw const ApiException(message: 'KYC status unavailable');
+    }
     return status;
   }
 

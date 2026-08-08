@@ -160,5 +160,26 @@ void main() {
         ),
       ).called(1);
     });
+
+    test('changePin delegates to repository', () async {
+      when(
+        () => mockRepo.changePin(
+          currentPin: '1234',
+          newPin: '5678',
+        ),
+      ).thenAnswer((_) async {});
+
+      await notifier.changePin(
+        currentPin: '1234',
+        newPin: '5678',
+      );
+
+      verify(
+        () => mockRepo.changePin(
+          currentPin: '1234',
+          newPin: '5678',
+        ),
+      ).called(1);
+    });
   });
 }

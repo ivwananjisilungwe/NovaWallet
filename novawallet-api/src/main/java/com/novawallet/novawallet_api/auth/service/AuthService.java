@@ -134,6 +134,30 @@ public class AuthService {
         log.info("PIN set for user: {}", userId);
     }
 
+    public void changePin(UUID userId, String currentPin, String newPin) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (isPinLocked(user)) {
+            throw new BadRequestException("PIN is locked until " + user.getPinLockedUntil());
+        }
+
+        if (user.getPinHash() == null) {
+            throw new BadRequestException("No PIN set — use set PIN first");
+        }
+
+        if (!passwordEncoder.matches(currentPin, user.getPinHash())) {
+            throw new BadRequestException("Current PIN is incorrect");
+        }
+
+        user.setPinHash(passwordEncoder.encode(newPin));
+        user.setPinAttempts(0);
+        user.setPinLockedUntil(null);
+        userRepository.save(user);
+
+        log.info("PIN changed for user: {}", userId);
+    }
+
     // ==================== Verify PIN (with rate limiting) ====================
 
     public boolean verifyPin(UUID userId, String pin) {

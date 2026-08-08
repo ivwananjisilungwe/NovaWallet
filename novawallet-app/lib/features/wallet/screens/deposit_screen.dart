@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,8 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
   final _amount = TextEditingController();
   final _description = TextEditingController();
   bool _submitting = false;
+  String? _operationPayload;
+  String? _idempotencyKey;
 
   @override
   void dispose() {
@@ -38,24 +42,65 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
       _toast('Wallet not loaded yet.');
       return;
     }
-    final desc = _description.text.trim().isEmpty ? 'Deposit' : _description.text.trim();
+    final desc = _description.text.trim().isEmpty
+        ? 'Deposit'
+        : _description.text.trim();
+    final payload = '${wallet.id}\u0000$amount\u0000$desc';
+    _prepareOperation(payload);
     setState(() => _submitting = true);
     try {
-      await ref.read(walletRepositoryProvider).deposit(
+      final transaction = await ref
+          .read(walletRepositoryProvider)
+          .deposit(
             walletId: wallet.id,
             amount: amount,
             description: desc,
-            idempotencyKey:
-                'dep-${DateTime.now().millisecondsSinceEpoch}',
+            idempotencyKey: _idempotencyKey,
           );
       await ref.read(walletProvider.notifier).refreshBalance();
       if (!mounted) return;
-      context.push('/success?title=Deposit successful&amount=$amount');
+      _clearOperation();
+      context.push(
+        Uri(
+          path: '/success',
+          queryParameters: {
+            'title': 'Deposit successful',
+            'amount': transaction.amount,
+            'ref': transaction.reference,
+          },
+        ).toString(),
+      );
     } on ApiException catch (e) {
+      if (!e.isNetworkError) _clearOperation();
       if (mounted) _toast(e.displayMessage);
+    } catch (_) {
+      if (mounted) {
+        _toast(
+          'Deposit status is uncertain. Check the transaction history before retrying.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  void _prepareOperation(String payload) {
+    if (_operationPayload == payload && _idempotencyKey != null) return;
+    _operationPayload = payload;
+    _idempotencyKey = _newOpaqueKey();
+  }
+
+  void _clearOperation() {
+    _operationPayload = null;
+    _idempotencyKey = null;
+  }
+
+  String _newOpaqueKey() {
+    final random = Random.secure();
+    return List.generate(
+      24,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
   }
 
   void _toast(String msg) {
@@ -75,7 +120,11 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
             children: [
               const Text(
                 'Add money to your wallet',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: NovaColors.onBackground),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: NovaColors.onBackground,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -94,11 +143,17 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Description (optional)',
                   prefixIcon: Icon(Icons.notes),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                  ),
                 ),
               ),
               const SizedBox(height: 28),
-              PillButton(label: 'Deposit', loading: _submitting, onPressed: _submit),
+              PillButton(
+                label: 'Deposit',
+                loading: _submitting,
+                onPressed: _submit,
+              ),
             ],
           ),
         ),

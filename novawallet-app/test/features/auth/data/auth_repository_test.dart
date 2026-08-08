@@ -225,6 +225,25 @@ void main() {
       });
     });
 
+    group('changePin', () {
+      test('posts to /v1/pin/change with currentPin and newPin', () async {
+        when(() => mockApi.post<Never>(
+          '/v1/pin/change',
+          body: {'currentPin': '1234', 'newPin': '5678'},
+        )).thenAnswer((_) async => null);
+
+        await repository.changePin(
+          currentPin: '1234',
+          newPin: '5678',
+        );
+
+        verify(() => mockApi.post<Never>(
+          '/v1/pin/change',
+          body: {'currentPin': '1234', 'newPin': '5678'},
+        )).called(1);
+      });
+    });
+
     group('logout', () {
       test('clears storage', () async {
         when(() => mockStorage.clear()).thenAnswer((_) async {});

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/nova_colors.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 
 /// Success state (per design 15) — shown after a deposit, transfer or withdraw.
@@ -36,20 +37,32 @@ class SuccessScreen extends StatelessWidget {
                   color: NovaColors.secondaryContainer,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.check_rounded, size: 52, color: NovaColors.onSecondaryContainer),
+                child: const Icon(
+                  Icons.check_rounded,
+                  size: 52,
+                  color: NovaColors.onSecondaryContainer,
+                ),
               ),
               const SizedBox(height: 24),
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: NovaColors.onBackground),
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  color: NovaColors.onBackground,
+                ),
               ),
               if (amount != null) ...[
                 const SizedBox(height: 12),
                 Text(
-                  'ZMW $amount',
+                  formatZmw(amount),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: NovaColors.success),
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    color: NovaColors.success,
+                  ),
                 ),
               ],
               if (reference != null) ...[
@@ -63,7 +76,8 @@ class SuccessScreen extends StatelessWidget {
               const SizedBox(height: 40),
               PillButton(
                 label: 'Done',
-                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                onPressed: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
               ),
             ],
           ),

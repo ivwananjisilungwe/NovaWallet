@@ -6,6 +6,8 @@ import com.novawallet.novawallet_api.notification.repository.NotificationAttempt
 import com.novawallet.novawallet_api.notification.repository.NotificationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -91,6 +93,32 @@ public class NotificationService {
         notification.setStatus(NotificationStatus.SENT);
         notification.setSentAt(LocalDateTime.now());
         notificationRepository.save(notification);
+    }
+
+    // ==================== Inbox API ====================
+
+    /**
+     * Get paginated notifications for the user's inbox, newest first.
+     */
+    @Transactional(readOnly = true)
+    public Page<Notification> getNotifications(UUID userId, Pageable pageable) {
+        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+    }
+
+    /**
+     * Get the count of unread notifications for the user.
+     */
+    @Transactional(readOnly = true)
+    public long getUnreadCount(UUID userId) {
+        return notificationRepository.countByUserIdAndReadAtIsNull(userId);
+    }
+
+    /**
+     * Mark all notifications as read for the user.
+     */
+    @Transactional
+    public int markAllAsRead(UUID userId) {
+        return notificationRepository.markAllAsRead(userId, LocalDateTime.now());
     }
 
     // ==================== Retry ====================

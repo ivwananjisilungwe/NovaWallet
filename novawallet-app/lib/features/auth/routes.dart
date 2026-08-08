@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import 'screens/change_password_screen.dart';
+import 'screens/change_pin_screen.dart';
 import 'screens/forgot_password_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -29,5 +30,6 @@ List<RouteBase> authRoutes = [
         VerifyEmailScreen(token: state.uri.queryParameters['token']),
   ),
   GoRoute(path: '/pin/set', builder: (context, state) => const SetPinScreen()),
+  GoRoute(path: '/pin/change', builder: (context, state) => const ChangePinScreen()),
   GoRoute(path: '/change-password', builder: (context, state) => const ChangePasswordScreen()),
 ];

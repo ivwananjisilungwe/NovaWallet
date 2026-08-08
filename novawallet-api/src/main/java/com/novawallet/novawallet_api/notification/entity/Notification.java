@@ -65,6 +65,9 @@ public class Notification {
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
 
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

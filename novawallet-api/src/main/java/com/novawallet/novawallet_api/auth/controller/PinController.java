@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.auth.controller;
 
+import com.novawallet.novawallet_api.auth.dto.request.ChangePinRequest;
 import com.novawallet.novawallet_api.auth.dto.request.SetPinRequest;
 import com.novawallet.novawallet_api.auth.service.AuthService;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
@@ -16,12 +17,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-/**
- * REST controller for transaction PIN management.
- *
- * <p>PINs are 4-6 digit codes required for financial operations. Rate-limited
- * to 3 failed attempts per 15 minutes before lockout.</p>
- */
 @RestController
 @RequestMapping("/api/v1/pin")
 @Tag(name = "Transaction PIN", description = "Transaction PIN management — set your 4-6 digit transaction PIN")
@@ -57,5 +52,30 @@ public class PinController {
         UUID userId = UUID.fromString(userDetails.getUsername());
         authService.setPin(userId, request.pin());
         return ResponseEntity.ok(ApiResponse.success(null, "PIN set successfully"));
+    }
+
+    @Operation(
+            summary = "Change transaction PIN",
+            description = "Changes the authenticated user's transaction PIN. Requires the current PIN and a new 4-6 digit PIN."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "PIN changed successfully"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "Current PIN is incorrect or new PIN is invalid"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "Unauthorized"
+            )
+    })
+    @PostMapping("/change")
+    public ResponseEntity<ApiResponse<Void>> changePin(
+            @Valid @RequestBody ChangePinRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        authService.changePin(userId, request.currentPin(), request.newPin());
+        return ResponseEntity.ok(ApiResponse.success(null, "PIN changed successfully"));
     }
 }

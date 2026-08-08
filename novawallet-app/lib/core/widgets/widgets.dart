@@ -131,7 +131,7 @@ class BalanceCard extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
-                    color: Colors.white,
+                    color: NovaColors.onWarning,
                   ),
                 ),
               ),
@@ -189,8 +189,8 @@ class TransactionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = incoming ? NovaColors.success : NovaColors.error;
-    final icon = this.icon ??
-        (incoming ? Icons.arrow_downward : Icons.arrow_upward);
+    final icon =
+        this.icon ?? (incoming ? Icons.arrow_downward : Icons.arrow_upward);
 
     return Material(
       color: NovaColors.surfaceContainerLowest,
@@ -260,11 +260,7 @@ class TransactionTile extends StatelessWidget {
 
 /// Pill-shaped status chip (Completed / Pending / Failed / FROZEN...).
 class StatusChip extends StatelessWidget {
-  const StatusChip({
-    super.key,
-    required this.label,
-    required this.color,
-  });
+  const StatusChip({super.key, required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -345,11 +341,7 @@ class ErrorStateView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 56,
-              color: NovaColors.error,
-            ),
+            const Icon(Icons.error_outline, size: 56, color: NovaColors.error),
             const SizedBox(height: 16),
             Text(
               title,
@@ -540,7 +532,7 @@ class AmountInput extends StatelessWidget {
             hintStyle: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w700,
-              color: NovaColors.outlineVariant,
+              color: NovaColors.amountInputHint,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(16)),

@@ -9,16 +9,22 @@ class NovaColors {
 
   // ---- Core brand anchors ----
   static const Color primary = Color(0xFF3525CD); // buttons / active / brand
-  static const Color primaryContainer = Color(0xFF4F46E5); // indigo-600 (gradient anchor)
+  static const Color primaryContainer = Color(
+    0xFF4F46E5,
+  ); // indigo-600 (gradient anchor)
   static const Color onPrimary = Color(0xFFFFFFFF);
   static const Color onPrimaryContainer = Color(0xFFDAD7FF);
 
   static const Color secondary = Color(0xFF006C49); // deep emerald
-  static const Color secondaryContainer = Color(0xFF6CF8BB); // light emerald (money-in)
+  static const Color secondaryContainer = Color(
+    0xFF6CF8BB,
+  ); // light emerald (money-in)
   static const Color onSecondary = Color(0xFFFFFFFF);
   static const Color onSecondaryContainer = Color(0xFF00714D);
 
-  static const Color success = Color(0xFF10B981); // emerald — money-in / success
+  static const Color success = Color(
+    0xFF0F766E,
+  ); // teal-700 — accessible money-in / success
 
   static const Color tertiary = Color(0xFF95002B);
   static const Color tertiaryContainer = Color(0xFFBF0F3C);
@@ -29,6 +35,9 @@ class NovaColors {
   static const Color onErrorContainer = Color(0xFF93000A);
 
   static const Color warning = Color(0xFFF59E0B); // amber — pending / KYC
+  static const Color onWarning = Color(
+    0xFF451A03,
+  ); // dark brown — text/icons on warning
 
   // Surfaces (slate-tinted light)
   static const Color background = Color(0xFFF8F9FF);
@@ -44,6 +53,7 @@ class NovaColors {
 
   static const Color outline = Color(0xFF777587);
   static const Color outlineVariant = Color(0xFFC7C4D8);
+  static const Color amountInputHint = Color(0xFF777587);
 
   // Elevation shadows are indigo-tinted (design system spec).
   static const Color shadowTint = Color(0xFF3525CD);

@@ -95,14 +95,22 @@ cd novawallet-api
 
 Covers: auth flows, transaction lifecycle, idempotency, rate limiting, fee engine, admin security, concurrent transfers, KYC endpoints.
 
-### Flutter (112 tests)
+### Flutter (137 tests)
 
 ```bash
 cd novawallet-app
 flutter test
 ```
 
-Covers: API client (envelope unwrap, error normalization, refresh single-flight), all repositories, model serialization, auth state machine, router guards.
+Covers: API client (envelope unwrap, error normalization, refresh single-flight), all repositories, model serialization, auth state machine, router guards, notification/statement/card features.
+
+## Orchestrator Agent
+
+This repo uses an **orchestrator + subagents** setup (opencode / Claude Code):
+
+- **`orchestrator`** (primary agent, defined in `~/.config/opencode/agent/`) reads `AGENTS.md`/`CLAUDE.md`, detects the stack, loads the matching skills (frontend→frontend skills, mobile→frontend+backend, backend→backend), and delegates to specialists.
+- **`mobile`**, **`frontend`**, **`backend`** subagents own one compartment each and load the assigned skills before working.
+- Switch to the orchestrator with Tab in opencode, or let it be the default (`default_agent` in `opencode.json`). Restart opencode after config changes.
 
 ## API Endpoints
 
@@ -113,9 +121,14 @@ Covers: API client (envelope unwrap, error normalization, refresh single-flight)
 | POST | `/api/v1/auth/refresh` | Refresh access token |
 | POST | `/api/v1/auth/change-password` | Change password |
 | POST | `/api/v1/pin/set` | Set transaction PIN |
+| POST | `/api/v1/pin/change` | Change transaction PIN |
+| GET | `/api/v1/notifications` | List user notifications (paginated) |
+| GET | `/api/v1/notifications/unread-count` | Get unread notification count |
+| PUT | `/api/v1/notifications/read-all` | Mark all notifications as read |
 | GET | `/api/v1/wallets/me` | Get user wallets |
 | POST | `/api/v1/wallets/{id}/deposit` | Deposit funds |
 | POST | `/api/v1/wallets/{id}/withdraw` | Withdraw funds |
+| GET | `/api/v1/wallets/{id}/statements` | Monthly wallet statement |
 | POST | `/api/v1/transfers` | Transfer funds (PIN required) |
 | GET | `/api/v1/wallets/{id}/transactions` | Paginated transaction history |
 | GET | `/api/v1/transactions/{reference}` | Transaction detail |
@@ -126,6 +139,10 @@ Covers: API client (envelope unwrap, error normalization, refresh single-flight)
 | POST | `/api/v1/admin/kyc/{id}/approve` | Admin: approve KYC |
 | POST | `/api/v1/admin/kyc/{id}/reject` | Admin: reject KYC |
 | GET | `/api/v1/admin/users` | Admin: user management |
+| GET | `/api/v1/admin/fees` | Admin: list fee configurations |
+| POST | `/api/v1/admin/fees` | Admin: create fee configuration |
+| PUT | `/api/v1/admin/fees/{id}` | Admin: update fee configuration |
+| DELETE | `/api/v1/admin/fees/{id}` | Admin: delete fee configuration |
 | PUT | `/api/v1/admin/wallets/{id}/freeze` | Admin: freeze wallet |
 | PUT | `/api/v1/admin/wallets/{id}/unfreeze` | Admin: unfreeze wallet |
 

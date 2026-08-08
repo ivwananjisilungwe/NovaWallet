@@ -14,9 +14,7 @@ class SecurityScreen extends StatelessWidget {
         icon: Icons.pin_outlined,
         title: 'Transaction PIN',
         subtitle: 'Used for transfers and withdrawals',
-        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PIN change is coming soon.')),
-        ),
+        onTap: () => context.push('/pin/change'),
       ),
       _Item(
         icon: Icons.lock_outline,

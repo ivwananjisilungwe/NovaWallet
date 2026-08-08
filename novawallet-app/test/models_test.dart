@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:novawallet_app/features/auth/models/user.dart';
 import 'package:novawallet_app/features/kyc/models/kyc_status.dart';
 import 'package:novawallet_app/features/profile/data/user_repository.dart';
+import 'package:novawallet_app/features/statement/models/statement_summary.dart';
 import 'package:novawallet_app/features/transaction/models/fee_estimate.dart';
 import 'package:novawallet_app/features/transaction/models/transaction.dart';
 import 'package:novawallet_app/features/wallet/models/wallet.dart';
@@ -283,6 +284,55 @@ void main() {
       expect(status.documents, isEmpty);
       expect(status.submittedAt, isNull);
       expect(status.approvedAt, isNull);
+    });
+  });
+
+  group('StatementSummary', () {
+    test('fromJson parses all fields', () {
+      final summary = StatementSummary.fromJson(<String, dynamic>{
+        'month': '2026-08',
+        'totalDeposits': '1500.00',
+        'totalWithdrawals': '400.00',
+        'totalTransfersIn': '300.00',
+        'totalTransfersOut': '200.00',
+        'totalFees': '25.00',
+        'netChange': '1175.00',
+        'transactionCount': 12,
+      });
+
+      expect(summary.month, '2026-08');
+      expect(summary.totalDeposits, '1500.00');
+      expect(summary.totalWithdrawals, '400.00');
+      expect(summary.totalTransfersIn, '300.00');
+      expect(summary.totalTransfersOut, '200.00');
+      expect(summary.totalFees, '25.00');
+      expect(summary.netChange, '1175.00');
+      expect(summary.transactionCount, 12);
+      expect(summary.hasActivity, isTrue);
+    });
+
+    test('fromJson parses transactionCount from a string', () {
+      final summary = StatementSummary.fromJson(<String, dynamic>{
+        'month': '2026-08',
+        'transactionCount': '7',
+      });
+
+      expect(summary.transactionCount, 7);
+      expect(summary.hasActivity, isTrue);
+    });
+
+    test('fromJson applies defaults for missing fields', () {
+      final summary = StatementSummary.fromJson(<String, dynamic>{});
+
+      expect(summary.month, '');
+      expect(summary.totalDeposits, '0');
+      expect(summary.totalWithdrawals, '0');
+      expect(summary.totalTransfersIn, '0');
+      expect(summary.totalTransfersOut, '0');
+      expect(summary.totalFees, '0');
+      expect(summary.netChange, '0');
+      expect(summary.transactionCount, 0);
+      expect(summary.hasActivity, isFalse);
     });
   });
 

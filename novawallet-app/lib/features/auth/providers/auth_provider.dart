@@ -86,6 +86,14 @@ class AuthNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Changes the transaction PIN. The user already has a PIN set, so
+  /// [AuthState.hasPin] stays true and no session state changes.
+  Future<void> changePin({
+    required String currentPin,
+    required String newPin,
+  }) =>
+      _repo.changePin(currentPin: currentPin, newPin: newPin);
+
   Future<void> forgotPassword(String email) => _repo.forgotPassword(email);
 
   Future<void> resetPassword({

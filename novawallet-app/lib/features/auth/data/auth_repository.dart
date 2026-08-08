@@ -13,6 +13,7 @@ import '../models/user.dart';
 ///   POST /v1/password/reset  (public)
 ///   POST /v1/email/verify    (public, ?token=)
 ///   POST /v1/pin             (JWT)
+///   POST /v1/pin/change      (JWT)
 ///   POST /v1/users/me/change-password (JWT)
 class AuthRepository {
   const AuthRepository(this._api, this._storage);
@@ -93,6 +94,16 @@ class AuthRepository {
   Future<void> setPin(String pin) => _api.post<Never>(
         '/v1/pin',
         body: {'pin': pin},
+      );
+
+  /// Changes the transaction PIN (requires the current PIN, 4-6 digits).
+  Future<void> changePin({
+    required String currentPin,
+    required String newPin,
+  }) =>
+      _api.post<Never>(
+        '/v1/pin/change',
+        body: {'currentPin': currentPin, 'newPin': newPin},
       );
 
   Future<void> logout() async {

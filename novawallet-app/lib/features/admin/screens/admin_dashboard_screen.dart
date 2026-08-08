@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/nova_colors.dart';
@@ -171,23 +172,33 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 return ErrorStateView(message: '${snap.error}', onRetry: _reload);
               }
               final items = snap.data ?? const [];
-              if (items.isEmpty) {
-                return ListView(
-                  children: [
-                    const SizedBox(height: 120),
+              return ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  const _FeeNavTile(),
+                  const SizedBox(height: 24),
+                  if (items.isEmpty)
                     const EmptyStateView(
                       icon: Icons.task_alt,
                       title: 'Queue clear',
                       message: 'No pending KYC reviews.',
+                    )
+                  else ...[
+                    const Text(
+                      'Pending KYC reviews',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: NovaColors.onSurface,
+                      ),
                     ),
+                    const SizedBox(height: 12),
+                    for (final item in items) ...[
+                      _queueCard(item),
+                      const SizedBox(height: 8),
+                    ],
                   ],
-                );
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.all(20),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, i) => _queueCard(items[i]),
+                ],
               );
             },
           ),
@@ -250,6 +261,75 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Navigation tile to the fee configurations admin screen.
+class _FeeNavTile extends StatelessWidget {
+  const _FeeNavTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: NovaColors.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => context.go('/admin/fees'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: NovaColors.surfaceContainerLow),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: NovaColors.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.receipt_long_outlined,
+                  size: 20,
+                  color: NovaColors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Fee configurations',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: NovaColors.onSurface,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Manage deposit, withdrawal and transfer fee rules',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: NovaColors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                color: NovaColors.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

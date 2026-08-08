@@ -10,11 +10,18 @@ class PinPad extends StatefulWidget {
     required this.length,
     required this.onComplete,
     this.confirmMode = false,
+    this.resetToken = 0,
   });
 
   /// Number of digits (4-6).
   final int length;
   final bool confirmMode;
+
+  /// Changing this value clears any entered digits.
+  ///
+  /// Hosts can increment the token after a phase change or failed submission
+  /// without managing the PIN value itself.
+  final int resetToken;
 
   /// Called with the whole PIN when [length] digits are entered.
   final ValueChanged<String> onComplete;
@@ -28,12 +35,21 @@ class _PinPadState extends State<PinPad> {
 
   bool get _isFilled => _digits.length >= widget.length;
 
+  @override
+  void didUpdateWidget(covariant PinPad oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.resetToken != widget.resetToken) {
+      _digits.clear();
+    }
+  }
+
   void _press(String d) {
     if (_isFilled) return;
     setState(() => _digits.add(d));
     if (_isFilled) {
+      final completedPin = _digits.join();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onComplete(_digits.join());
+        if (mounted) widget.onComplete(completedPin);
       });
     }
   }
@@ -94,23 +110,29 @@ class _PinPadState extends State<PinPad> {
   }
 
   Widget _key(String label) {
+    final isBackspace = label == '⌫';
     return SizedBox(
       width: 84,
       height: 62,
       child: label.isEmpty
           ? const SizedBox.shrink()
-          : TextButton(
-              onPressed: label == '⌫' ? _back : () => _press(label),
-              style: TextButton.styleFrom(
-                foregroundColor: NovaColors.onSurface,
-                shape: const StadiumBorder(),
-                backgroundColor: NovaColors.surfaceContainerLow,
-              ),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
+          : Semantics(
+              label: isBackspace ? 'Backspace' : null,
+              button: true,
+              excludeSemantics: isBackspace,
+              child: TextButton(
+                onPressed: isBackspace ? _back : () => _press(label),
+                style: TextButton.styleFrom(
+                  foregroundColor: NovaColors.onSurface,
+                  shape: const StadiumBorder(),
+                  backgroundColor: NovaColors.surfaceContainerLow,
+                ),
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),

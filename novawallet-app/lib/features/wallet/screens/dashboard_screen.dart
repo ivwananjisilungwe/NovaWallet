@@ -7,6 +7,7 @@ import '../../../core/theme/nova_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../notification/providers/notification_provider.dart';
 import '../../transaction/models/transaction.dart';
 import '../../transaction/providers/transaction_provider.dart';
 import '../providers/wallet_provider.dart';
@@ -20,6 +21,7 @@ class DashboardScreen extends ConsumerWidget {
     final auth = ref.watch(authProvider).state;
     final walletAsync = ref.watch(walletProvider);
     final user = auth.user;
+    final unreadCount = ref.watch(unreadCountProvider).valueOrNull ?? 0;
 
     final wallet = walletAsync.valueOrNull;
     final txsAsync = wallet == null
@@ -36,6 +38,7 @@ class DashboardScreen extends ConsumerWidget {
             children: [
               _TopBar(
                 name: user?.firstName ?? 'there',
+                unreadCount: unreadCount,
                 onNotifications: () => context.push('/notifications'),
                 onProfile: () => context.go('/profile'),
               ),
@@ -104,11 +107,19 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.name, required this.onNotifications, required this.onProfile});
+  const _TopBar({
+    required this.name,
+    required this.onNotifications,
+    required this.onProfile,
+    this.unreadCount = 0,
+  });
 
   final String name;
   final VoidCallback onNotifications;
   final VoidCallback onProfile;
+
+  /// Number of unread notifications from [unreadCountProvider].
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -140,15 +151,28 @@ class _TopBar extends StatelessWidget {
               onPressed: onNotifications,
               icon: const Icon(Icons.notifications_none, color: NovaColors.onSurface),
             ),
-            Positioned(
-              right: 8,
-              top: 8,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(color: NovaColors.error, shape: BoxShape.circle),
+            if (unreadCount > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  constraints: const BoxConstraints(minWidth: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: NovaColors.error,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    unreadCount > 99 ? '99+' : '$unreadCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
-            ),
           ],
         ),
         GestureDetector(onTap: onProfile, child: InitialsAvatar(name: name)),
