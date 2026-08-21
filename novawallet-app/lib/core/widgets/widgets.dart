@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/nova_colors.dart';
 import 'pill_button.dart';
@@ -143,7 +144,7 @@ class BalanceCard extends StatelessWidget {
                 Expanded(
                   child: PillButton(
                     label: 'Deposit',
-                    filled: true,
+                    variant: PillButtonVariant.filled,
                     expanded: false,
                     onPressed: onDeposit,
                   ),
@@ -152,7 +153,7 @@ class BalanceCard extends StatelessWidget {
                 Expanded(
                   child: PillButton(
                     label: 'Withdraw',
-                    filled: false,
+                    variant: PillButtonVariant.outlined,
                     expanded: false,
                     onPressed: onWithdraw,
                   ),
@@ -168,6 +169,10 @@ class BalanceCard extends StatelessWidget {
 
 /// Single recent-transaction row: colored leading icon, title, subtitle,
 /// and right-aligned signed amount (green in / red out).
+///
+/// When [heroTag] is provided the leading icon is wrapped in a [Hero] so
+/// it can animate into [TransactionDetailScreen] — pass `tx.reference` as
+/// the tag so each tile has a unique hero.
 class TransactionTile extends StatelessWidget {
   const TransactionTile({
     super.key,
@@ -177,6 +182,7 @@ class TransactionTile extends StatelessWidget {
     required this.incoming,
     this.icon,
     this.onTap,
+    this.heroTag,
   });
 
   final String title;
@@ -186,18 +192,47 @@ class TransactionTile extends StatelessWidget {
   final IconData? icon;
   final VoidCallback? onTap;
 
+  /// Optional hero tag for shared-element transition. When set the leading
+  /// icon is wrapped in a [Hero] whose tag is `tx_icon_$heroTag`.
+  final String? heroTag;
+
+  void _handleTap() {
+    if (onTap == null) return;
+    HapticFeedback.selectionClick();
+    onTap!();
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = incoming ? NovaColors.success : NovaColors.error;
-    final icon =
-        this.icon ?? (incoming ? Icons.arrow_downward : Icons.arrow_upward);
+    final resolvedIcon =
+        icon ?? (incoming ? Icons.arrow_downward : Icons.arrow_upward);
+
+    Widget iconWidget = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(resolvedIcon, size: 20, color: color),
+    );
+
+    // Wrap in Hero when a tag is provided so the detail screen can animate
+    // the icon. Each transaction's reference is unique so the tag is unique.
+    if (heroTag != null) {
+      iconWidget = Hero(
+        tag: 'tx_icon_$heroTag',
+        child: iconWidget,
+      );
+    }
 
     return Material(
       color: NovaColors.surfaceContainerLowest,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
+        onTap: onTap == null ? null : _handleTap,
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -206,16 +241,8 @@ class TransactionTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Leading colored icon.
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 20, color: color),
-              ),
+              // Leading colored icon (optionally hero-wrapped).
+              iconWidget,
               const SizedBox(width: 12),
               // Title + subtitle.
               Expanded(
@@ -549,6 +576,7 @@ class AmountInput extends StatelessWidget {
                 ActionChip(
                   label: Text('ZMW $amount'),
                   onPressed: () {
+                    HapticFeedback.selectionClick();
                     controller.text = amount;
                     onChanged?.call(amount);
                   },

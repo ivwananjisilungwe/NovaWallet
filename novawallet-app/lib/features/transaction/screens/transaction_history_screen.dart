@@ -48,6 +48,7 @@ class TransactionHistoryScreen extends ConsumerWidget {
                       subtitle: formatRelativeDate(tx.createdAt),
                       amountText: formatZmw(tx.amount),
                       incoming: tx.isIncoming,
+                      heroTag: tx.reference,
                       onTap: () => context.push('/transactions/${tx.reference}'),
                     );
                   }),

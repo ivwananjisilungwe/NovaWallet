@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/network/api_exception.dart';
 import '../../../core/theme/nova_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notification/providers/notification_provider.dart';
 import '../../transaction/models/transaction.dart';
 import '../../transaction/providers/transaction_provider.dart';
+import '../models/wallet.dart';
 import '../providers/wallet_provider.dart';
 
 /// Home / wallet dashboard (per design 07-home-dashboard). Tab #1 root.
@@ -28,6 +30,30 @@ class DashboardScreen extends ConsumerWidget {
         ? const AsyncValue<List<WalletTransaction>>.loading()
         : ref.watch(transactionsProvider(wallet.id));
 
+    // Show skeleton while wallet is loading
+    if (walletAsync.isLoading) {
+      return Scaffold(
+        backgroundColor: NovaColors.background,
+        body: SafeArea(
+          child: const DashboardSkeleton(),
+        ),
+      );
+    }
+
+    // Show error state if wallet failed to load
+    if (walletAsync.hasError) {
+      return Scaffold(
+        backgroundColor: NovaColors.background,
+        body: SafeArea(
+          child: ErrorStateView(
+            title: 'Wallet unavailable',
+            message: walletAsync.error.toString(),
+            onRetry: () => ref.read(walletProvider.notifier).refreshBalance(),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: NovaColors.background,
       body: SafeArea(
@@ -43,62 +69,23 @@ class DashboardScreen extends ConsumerWidget {
                 onProfile: () => context.go('/profile'),
               ),
               const SizedBox(height: 20),
-              walletAsync.when(
-                loading: () => const _BalanceSkeleton(),
-                error: (e, _) {
-                  if (e is ApiException && e.statusCode == 404) {
-                    return const _KycPrompt();
-                  }
-                  return _WalletError(message: '$e');
-                },
-                data: (w) => BalanceCard(
-                  balanceLabel: 'Available balance',
-                  balanceAmount: formatZmw(w.balance),
-                  accountNumber: w.maskedAccount,
-                  frozen: w.isFrozen,
-                  onDeposit: () => context.push('/deposit'),
-                  onWithdraw: () => context.push('/withdraw'),
-                ),
+              _BalanceCard(
+                wallet: wallet!,
+                onDeposit: () => context.push('/deposit'),
+                onWithdraw: () => context.push('/withdraw'),
               ),
               const SizedBox(height: 24),
-              _QuickActions(onSend: () => context.go('/send')),
-              const SizedBox(height: 28),
-              SectionHeader(
-                title: 'Recent transactions',
-                actionLabel: 'View all',
-                onAction: () => context.push('/transactions'),
+              _QuickActions(
+                onSend: () => context.push('/send'),
+                onRequest: () => context.push('/request'),
+                onAirtime: () => context.push('/airtime'),
+                onBills: () => context.push('/bills'),
               ),
-              const SizedBox(height: 12),
-              if (txsAsync.isLoading)
-                const LoadingView(message: 'Loading transactions…')
-              else if (txsAsync.hasError)
-                const EmptyStateView(
-                  icon: Icons.error_outline,
-                  title: 'Couldn\'t load',
-                  message: 'Pull to retry.',
-                )
-              else if (txsAsync.value!.isEmpty)
-                const EmptyStateView(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'No transactions yet',
-                  message: 'Tap Deposit to add money to your wallet.',
-                )
-              else
-                ...txsAsync.value!
-                    .take(3)
-                    .map(
-                      (tx) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: TransactionTile(
-                          title: tx.displayTitle,
-                          subtitle: formatRelativeDate(tx.createdAt),
-                          amountText: formatZmw(tx.amount),
-                          incoming: tx.isIncoming,
-                          onTap: () => context.push('/transactions/${tx.reference}'),
-                        ),
-                      ),
-                    ),
-              const SizedBox(height: 100),
+              const SizedBox(height: 24),
+              _RecentTransactions(
+                transactionsAsync: txsAsync,
+                onViewAll: () => context.push('/transactions'),
+              ),
             ],
           ),
         ),
@@ -106,183 +93,442 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 }
+
+/// Top app bar with greeting, notification bell, and profile avatar.
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.name,
+    required this.unreadCount,
     required this.onNotifications,
     required this.onProfile,
-    this.unreadCount = 0,
   });
 
   final String name;
+  final int unreadCount;
   final VoidCallback onNotifications;
   final VoidCallback onProfile;
-
-  /// Number of unread notifications from [unreadCountProvider].
-  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Hi, $name',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: NovaColors.onBackground,
-                ),
-              ),
-              const Text(
-                'Welcome back',
-                style: TextStyle(fontSize: 14, color: NovaColors.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-        Stack(
-          clipBehavior: Clip.none,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(
-              onPressed: onNotifications,
-              icon: const Icon(Icons.notifications_none, color: NovaColors.onSurface),
-            ),
-            if (unreadCount > 0)
-              Positioned(
-                right: 6,
-                top: 6,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  constraints: const BoxConstraints(minWidth: 16),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: NovaColors.error,
-                    borderRadius: BorderRadius.circular(999),
+            Text(
+              'Hi, $name',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: NovaColors.onBackground,
                   ),
+            ),
+            Text(
+              'Good to see you!',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: NovaColors.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            // Notification bell
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  onPressed: onNotifications,
+                  icon: const Icon(Icons.notifications_outlined),
+                  style: IconButton.styleFrom(
+                    backgroundColor: NovaColors.surfaceContainerLow,
+                    foregroundColor: NovaColors.onSurface,
+                  ),
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: NovaColors.error,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        unreadCount > 9 ? '9+' : '$unreadCount',
+                        style: const TextStyle(
+                          color: NovaColors.onError,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            // Profile avatar
+            GestureDetector(
+              onTap: onProfile,
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [NovaColors.primary, NovaColors.secondary],
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
                   child: Text(
-                    unreadCount > 99 ? '99+' : '$unreadCount',
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
+                      color: NovaColors.onPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
                 ),
               ),
+            ),
           ],
         ),
-        GestureDetector(onTap: onProfile, child: InitialsAvatar(name: name)),
       ],
     );
   }
 }
 
-class _BalanceSkeleton extends StatelessWidget {
-  const _BalanceSkeleton();
+/// Balance card with gradient background and action buttons.
+class _BalanceCard extends ConsumerStatefulWidget {
+  const _BalanceCard({
+    required this.wallet,
+    required this.onDeposit,
+    required this.onWithdraw,
+  });
+
+  final Wallet wallet;
+  final VoidCallback onDeposit;
+  final VoidCallback onWithdraw;
+
+  @override
+  ConsumerState<_BalanceCard> createState() => _BalanceCardState();
+}
+
+class _BalanceCardState extends ConsumerState<_BalanceCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _shimmerController;
+  late final Animation<double> _shimmerAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _shimmerController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    )..repeat();
+    _shimmerAnimation = _shimmerController;
+  }
+
+  @override
+  void dispose() {
+    _shimmerController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final balance = widget.wallet.balance;
+    final maskedAccount = _maskAccount(widget.wallet.accountNumber);
+
     return Container(
-      height: 180,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [NovaColors.primary, NovaColors.primaryContainer],
+          colors: [
+            NovaColors.primary,          // #3525CD — brand indigo
+            NovaColors.primaryContainer, // #4F46E5 — gradient anchor
+          ],
         ),
-        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x403525CD), // 25% opacity indigo tint (matches ElevationTokens.shadowCard)
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
-      child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Account label
+          Row(
+            children: [
+              const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: NovaColors.onPrimary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'NovaWallet',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: NovaColors.onPrimary.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Masked account number
+          Text(
+            maskedAccount,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: NovaColors.onPrimary.withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 24),
+          // Balance amount with shimmer effect
+          AnimatedBuilder(
+            animation: _shimmerAnimation,
+            builder: (context, child) {
+              return ShaderMask(
+                blendMode: BlendMode.srcIn,
+                shaderCallback: (bounds) {
+                  return LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      NovaColors.onPrimary,
+                      NovaColors.onPrimary.withValues(alpha: 0.6),
+                      NovaColors.onPrimary,
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                    transform: _SlidingGradientTransform(
+                      slidePercent: _shimmerAnimation.value,
+                    ),
+                  ).createShader(bounds);
+                },
+                child: Text(
+                  formatZmw(balance),
+                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                        color: NovaColors.onPrimary,
+                        fontWeight: FontWeight.bold,
+                        height: 1.1,
+                      ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Available Balance',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: NovaColors.onPrimary.withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 24),
+          // Action buttons
+          Row(
+            children: [
+              Expanded(
+                child: PillButton(
+                  label: 'Deposit',
+                  icon: Icons.add_circle_outline,
+                  variant: PillButtonVariant.outlined,
+                  onPressed: widget.onDeposit,
+                  semanticsLabel: 'Deposit money',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: PillButton(
+                  label: 'Withdraw',
+                  icon: Icons.remove_circle_outline,
+                  variant: PillButtonVariant.filled,
+                  onPressed: widget.onWithdraw,
+                  semanticsLabel: 'Withdraw money',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _maskAccount(String accountNumber) {
+    if (accountNumber.length <= 4) return accountNumber;
+    final visible = accountNumber.substring(accountNumber.length - 4);
+    return '**** **** **** $visible';
+  }
+}
+
+/// Transform for sliding gradient in balance card.
+class _SlidingGradientTransform extends GradientTransform {
+  const _SlidingGradientTransform({required this.slidePercent});
+
+  final double slidePercent;
+
+  @override
+  Matrix4? transform(Rect bounds, {TextDirection? textDirection}) {
+    final double width = bounds.width;
+    final double translate = width * slidePercent * 2 - width;
+    return Matrix4.translationValues(translate, 0.0, 0.0);
+  }
+}
+
+/// Quick actions grid.
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({
+    required this.onSend,
+    required this.onRequest,
+    required this.onAirtime,
+    required this.onBills,
+  });
+
+  final VoidCallback onSend;
+  final VoidCallback onRequest;
+  final VoidCallback onAirtime;
+  final VoidCallback onBills;
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = [
+      _ActionData('Send', Icons.send_outlined, NovaColors.primary, onSend),
+      _ActionData('Request', Icons.call_received_outlined, NovaColors.secondary, onRequest),
+      _ActionData('Airtime', Icons.phone_android_outlined, NovaColors.warning, onAirtime),
+      _ActionData('Bills', Icons.receipt_long_outlined, NovaColors.secondary, onBills),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Quick Actions',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: NovaColors.onBackground,
+              ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: actions.map((action) {
+            return _AnimatedAction(action: action);
+          }).toList(),
+        ),
+      ],
     );
   }
 }
 
-class _WalletError extends StatelessWidget {
-  const _WalletError({required this.message});
+class _ActionData {
+  const _ActionData(this.label, this.icon, this.color, this.onTap);
 
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return ErrorStateView(title: 'Wallet unavailable', message: message);
-  }
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
 }
 
-/// KYC prompt shown when wallet is not found (404) — backend creates wallet only after KYC approval.
-class _KycPrompt extends StatelessWidget {
-  const _KycPrompt();
+class _AnimatedAction extends StatefulWidget {
+  const _AnimatedAction({required this.action});
+
+  final _ActionData action;
+
+  @override
+  State<_AnimatedAction> createState() => _AnimatedActionState();
+}
+
+class _AnimatedActionState extends State<_AnimatedAction>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.85,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeOutCubic,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    _controller.reverse();
+    widget.action.onTap();
+    HapticFeedback.lightImpact();
+  }
+
+  void _handleTapCancel() {
+    _controller.reverse();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: NovaColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: NovaColors.outlineVariant),
-      ),
+    return AnimatedBuilder(
+      animation: _scaleAnimation,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnimation.value,
+          child: GestureDetector(
+            onTapDown: _handleTapDown,
+            onTapUp: _handleTapUp,
+            onTapCancel: _handleTapCancel,
+            child: child!,
+          ),
+        );
+      },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
-              color: NovaColors.primary.withValues(alpha: 0.12),
+              color: widget.action.color.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.verified_user_outlined,
-              size: 28,
-              color: NovaColors.primary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Complete identity verification',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: NovaColors.onSurface,
+            child: Icon(
+              widget.action.icon,
+              color: widget.action.color,
+              size: 24,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Your wallet is created once your KYC is approved. Verify your identity to get started.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 14,
-              color: NovaColors.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 20),
-          PillButton(
-            label: 'Start verification',
-            filled: true,
-            expanded: true,
-            onPressed: () => context.push('/kyc/upload'),
-          ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: () => context.push('/kyc/status'),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              'Check KYC status',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: NovaColors.primary,
-              ),
-            ),
+            widget.action.label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: NovaColors.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
           ),
         ],
       ),
@@ -290,54 +536,149 @@ class _KycPrompt extends StatelessWidget {
   }
 }
 
-class _QuickActions extends StatelessWidget {
-  const _QuickActions({required this.onSend});
+/// Recent transactions section.
+class _RecentTransactions extends StatelessWidget {
+  const _RecentTransactions({
+    required this.transactionsAsync,
+    required this.onViewAll,
+  });
 
-  final VoidCallback onSend;
+  final AsyncValue<List<WalletTransaction>> transactionsAsync;
+  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader(title: 'Quick actions'),
-        const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _Action(icon: Icons.send, label: 'Send', onTap: onSend),
-            const _Action(icon: Icons.qr_code_scanner, label: 'Request', onTap: null),
-            const _Action(icon: Icons.phone_android, label: 'Airtime', onTap: null),
-            const _Action(icon: Icons.receipt_long, label: 'Bills', onTap: null),
+            Text(
+              'Recent Transactions',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: NovaColors.onBackground,
+                  ),
+            ),
+            TextButton(
+              onPressed: onViewAll,
+              child: Text(
+                'View All',
+                style: TextStyle(
+                  color: NovaColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ],
         ),
+        const SizedBox(height: 16),
+        _buildTransactionsList(context),
       ],
+    );
+  }
+
+  Widget _buildTransactionsList(BuildContext context) {
+    if (transactionsAsync.isLoading) {
+      return const TransactionListSkeleton();
+    }
+
+    if (transactionsAsync.hasError) {
+      return ErrorStateView(
+        title: 'Could not load transactions',
+        message: transactionsAsync.error.toString(),
+        onRetry: () {}, // Will be handled by parent refresh
+      );
+    }
+
+    final transactions = transactionsAsync.value ?? [];
+
+    if (transactions.isEmpty) {
+      return EmptyStateView(
+        icon: Icons.receipt_long_outlined,
+        title: 'No transactions yet',
+        message: 'Your transaction history will appear here.',
+        actionLabel: 'Send Money',
+        onAction: onViewAll,
+      );
+    }
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: transactions.length.clamp(0, 5),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final tx = transactions[index];
+        return _AnimatedTransactionTile(transaction: tx, index: index);
+      },
     );
   }
 }
 
-class _Action extends StatelessWidget {
-  const _Action({required this.icon, required this.label, this.onTap});
+class _AnimatedTransactionTile extends StatefulWidget {
+  const _AnimatedTransactionTile({
+    required this.transaction,
+    required this.index,
+  });
 
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
+  final WalletTransaction transaction;
+  final int index;
+
+  @override
+  State<_AnimatedTransactionTile> createState() => _AnimatedTransactionTileState();
+}
+
+class _AnimatedTransactionTileState extends State<_AnimatedTransactionTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: Duration(milliseconds: 300 + widget.index * 50),
+      vsync: this,
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(color: NovaColors.surfaceContainerLow, shape: BoxShape.circle),
-            child: Icon(icon, color: NovaColors.primary, size: 24),
-          ),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 12, color: NovaColors.onSurfaceVariant)),
-        ],
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: TransactionTile(
+          title: widget.transaction.displayTitle,
+          subtitle: formatRelativeDate(widget.transaction.createdAt),
+          amountText: widget.transaction.signedAmount,
+          incoming: widget.transaction.isIncoming,
+          heroTag: widget.transaction.reference,
+          onTap: () {
+            context.push('/transactions/${widget.transaction.reference}');
+          },
+        ),
       ),
     );
   }
