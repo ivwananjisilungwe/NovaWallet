@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/nova_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../../core/widgets/branded_refresh.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notification/providers/notification_provider.dart';
@@ -57,7 +58,7 @@ class DashboardScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: NovaColors.background,
       body: SafeArea(
-        child: RefreshIndicator(
+        child: BrandedRefreshIndicator(
           onRefresh: () => ref.read(walletProvider.notifier).refreshBalance(),
           child: ListView(
             padding: const EdgeInsets.all(20),
@@ -296,35 +297,45 @@ class _BalanceCardState extends ConsumerState<_BalanceCard>
                 ),
           ),
           const SizedBox(height: 24),
-          // Balance amount with shimmer effect
-          AnimatedBuilder(
-            animation: _shimmerAnimation,
-            builder: (context, child) {
-              return ShaderMask(
-                blendMode: BlendMode.srcIn,
-                shaderCallback: (bounds) {
-                  return LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      NovaColors.onPrimary,
-                      NovaColors.onPrimary.withValues(alpha: 0.6),
-                      NovaColors.onPrimary,
-                    ],
-                    stops: const [0.0, 0.5, 1.0],
-                    transform: _SlidingGradientTransform(
-                      slidePercent: _shimmerAnimation.value,
+          // Balance amount with count-up (800ms) layered under shimmer
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(
+              begin: 0,
+              end: double.tryParse(balance.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0,
+            ),
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeOutCubic,
+            builder: (context, animatedValue, _) {
+              return AnimatedBuilder(
+                animation: _shimmerAnimation,
+                builder: (context, child) {
+                  return ShaderMask(
+                    blendMode: BlendMode.srcIn,
+                    shaderCallback: (bounds) {
+                      return LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          NovaColors.onPrimary,
+                          NovaColors.onPrimary.withValues(alpha: 0.6),
+                          NovaColors.onPrimary,
+                        ],
+                        stops: const [0.0, 0.5, 1.0],
+                        transform: _SlidingGradientTransform(
+                          slidePercent: _shimmerAnimation.value,
+                        ),
+                      ).createShader(bounds);
+                    },
+                    child: Text(
+                      formatZmw(animatedValue.toStringAsFixed(2)),
+                      style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                            color: NovaColors.onPrimary,
+                            fontWeight: FontWeight.bold,
+                            height: 1.1,
+                          ),
                     ),
-                  ).createShader(bounds);
+                  );
                 },
-                child: Text(
-                  formatZmw(balance),
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                        color: NovaColors.onPrimary,
-                        fontWeight: FontWeight.bold,
-                        height: 1.1,
-                      ),
-                ),
               );
             },
           ),

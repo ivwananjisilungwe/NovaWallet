@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/nova_colors.dart';
+import '../../../core/widgets/branded_refresh.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
@@ -35,7 +36,7 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: NovaColors.background,
       body: SafeArea(
-        child: RefreshIndicator(
+        child: BrandedRefreshIndicator(
           onRefresh: () => ref.refresh(profileProvider.future),
           child: ListView(
             padding: const EdgeInsets.all(20),

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/nova_colors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/branded_refresh.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../wallet/providers/wallet_provider.dart';
 import '../providers/transaction_provider.dart'
@@ -50,7 +51,7 @@ class _TransactionHistoryScreenState
     return Scaffold(
       backgroundColor: NovaColors.background,
       appBar: AppBar(title: const Text('Transactions')),
-      body: RefreshIndicator(
+      body: BrandedRefreshIndicator(
         onRefresh: () async {
           if (wallet != null) {
             await ref
