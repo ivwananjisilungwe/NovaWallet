@@ -141,6 +141,8 @@ public class TransactionService {
     public TransactionResponse withdraw(UUID walletId, WithdrawRequest request, UUID userId) {
         Wallet wallet = findActiveWalletWithLock(walletId, userId);
 
+        requireVerifiedEmail(userId);
+
         authService.verifyPin(userId, request.pin());
 
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
@@ -242,6 +244,8 @@ public class TransactionService {
         if (receiverWallet.getStatus() != WalletStatus.ACTIVE) {
             throw new BadRequestException("Receiver wallet is not active");
         }
+
+        requireVerifiedEmail(userId);
 
         authService.verifyPin(userId, request.pin());
 
@@ -366,6 +370,15 @@ public class TransactionService {
     }
 
     // ==================== Private helpers ====================
+
+    private void requireVerifiedEmail(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (!user.isEmailVerified()) {
+            throw new ForbiddenException(
+                    "Email not verified — please verify your email before moving funds.");
+        }
+    }
 
     /**
      * Finds a wallet with PESSIMISTIC_WRITE lock and validates ownership + active status.
