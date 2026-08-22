@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/nova_colors.dart';
+import '../theme/design_tokens.dart';
 
 /// Offline / connectivity banner shown when the app detects a network failure.
 ///
@@ -22,17 +22,26 @@ class OfflineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: NovaColors.warning.withValues(alpha: 0.15),
+        // Amber passes ≥ 4.5:1 on dark surfaces as-is, so it stays the same
+        // semantic token in both themes.
+        color: SemanticColors.warning.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: NovaColors.warning.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: SemanticColors.warning.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.wifi_off_rounded, size: 18, color: NovaColors.warning),
+          const Icon(
+            Icons.wifi_off_rounded,
+            size: 18,
+            color: SemanticColors.warning,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -40,7 +49,7 @@ class OfflineBanner extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: NovaColors.onWarning,
+                color: SemanticColors.onWarning,
               ),
             ),
           ),
@@ -62,7 +71,7 @@ class OfflineBanner extends StatelessWidget {
               onPressed: onDismiss,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              color: NovaColors.onSurfaceVariant,
+              color: scheme.onSurfaceVariant,
             ),
         ],
       ),

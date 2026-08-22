@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../theme/nova_colors.dart';
-
 /// Numeric PIN pad with live dots, used by set-PIN, transfer confirm, withdraw
 /// and lockout flows. Emits the full PIN via [onComplete].
 class PinPad extends StatefulWidget {
@@ -80,13 +78,14 @@ class _PinPadState extends State<PinPad> {
   }
 
   Widget _dot(bool filled) {
+    final scheme = Theme.of(context).colorScheme;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       width: 16,
       height: 16,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: filled ? NovaColors.primary : NovaColors.surfaceContainerHighest,
+        color: filled ? scheme.primary : scheme.surfaceContainerHighest,
       ),
     );
   }
@@ -111,6 +110,7 @@ class _PinPadState extends State<PinPad> {
 
   Widget _key(String label) {
     final isBackspace = label == '⌫';
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 84,
       height: 62,
@@ -123,9 +123,9 @@ class _PinPadState extends State<PinPad> {
               child: TextButton(
                 onPressed: isBackspace ? _back : () => _press(label),
                 style: TextButton.styleFrom(
-                  foregroundColor: NovaColors.onSurface,
+                  foregroundColor: scheme.onSurface,
                   shape: const StadiumBorder(),
-                  backgroundColor: NovaColors.surfaceContainerLow,
+                  backgroundColor: scheme.surfaceContainerLow,
                 ),
                 child: Text(
                   label,
