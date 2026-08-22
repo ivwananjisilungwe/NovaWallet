@@ -15,6 +15,10 @@ class NovawalletApp extends StatelessWidget {
       title: 'NovaWallet',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      // Follow the OS setting; a user-facing override can later be added via
+      // a Riverpod themeModeProvider without touching this wiring.
+      themeMode: ThemeMode.system,
       routerConfig: router.router,
     );
   }

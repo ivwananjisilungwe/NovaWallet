@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/nova_colors.dart';
+import '../../../core/theme/design_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../core/widgets/branded_refresh.dart';
@@ -34,7 +34,7 @@ class DashboardScreen extends ConsumerWidget {
     // Show skeleton while wallet is loading
     if (walletAsync.isLoading) {
       return Scaffold(
-        backgroundColor: NovaColors.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         body: SafeArea(
           child: const DashboardSkeleton(),
         ),
@@ -44,7 +44,7 @@ class DashboardScreen extends ConsumerWidget {
     // Show error state if wallet failed to load
     if (walletAsync.hasError) {
       return Scaffold(
-        backgroundColor: NovaColors.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         body: SafeArea(
           child: ErrorStateView(
             title: 'Wallet unavailable',
@@ -56,7 +56,7 @@ class DashboardScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: NovaColors.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
         child: BrandedRefreshIndicator(
           onRefresh: () => ref.read(walletProvider.notifier).refreshBalance(),
@@ -111,6 +111,7 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -121,13 +122,12 @@ class _TopBar extends StatelessWidget {
               'Hi, $name',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: NovaColors.onBackground,
                   ),
             ),
             Text(
               'Good to see you!',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: NovaColors.onSurfaceVariant,
+                    color: scheme.onSurfaceVariant,
                   ),
             ),
           ],
@@ -142,8 +142,8 @@ class _TopBar extends StatelessWidget {
                   onPressed: onNotifications,
                   icon: const Icon(Icons.notifications_outlined),
                   style: IconButton.styleFrom(
-                    backgroundColor: NovaColors.surfaceContainerLow,
-                    foregroundColor: NovaColors.onSurface,
+                    backgroundColor: scheme.surfaceContainerLow,
+                    foregroundColor: scheme.onSurface,
                   ),
                 ),
                 if (unreadCount > 0)
@@ -153,7 +153,7 @@ class _TopBar extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: NovaColors.error,
+                        color: scheme.error,
                         shape: BoxShape.circle,
                       ),
                       constraints: const BoxConstraints(
@@ -162,8 +162,8 @@ class _TopBar extends StatelessWidget {
                       ),
                       child: Text(
                         unreadCount > 9 ? '9+' : '$unreadCount',
-                        style: const TextStyle(
-                          color: NovaColors.onError,
+                        style: TextStyle(
+                          color: scheme.onError,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
@@ -180,9 +180,9 @@ class _TopBar extends StatelessWidget {
               child: Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [NovaColors.primary, NovaColors.secondary],
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [SemanticColors.brandPrimary, SemanticColors.moneyIn],
                   ),
                   shape: BoxShape.circle,
                 ),
@@ -190,7 +190,7 @@ class _TopBar extends StatelessWidget {
                   child: Text(
                     name.isNotEmpty ? name[0].toUpperCase() : '?',
                     style: const TextStyle(
-                      color: NovaColors.onPrimary,
+                      color: SemanticColors.onBrandPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -251,21 +251,17 @@ class _BalanceCardState extends ConsumerState<_BalanceCard>
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
+        // Brand hero card — identical gradient in both themes (white ink on
+        // indigo), so it uses the theme-invariant brand tokens.
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            NovaColors.primary,          // #3525CD — brand indigo
-            NovaColors.primaryContainer, // #4F46E5 — gradient anchor
+            SemanticColors.brandPrimary, // #3525CD — brand indigo
+            SemanticColors.brandPrimaryContainer, // #4F46E5 — gradient anchor
           ],
         ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x403525CD), // 25% opacity indigo tint (matches ElevationTokens.shadowCard)
-            blurRadius: 20,
-            offset: Offset(0, 8),
-          ),
-        ],
+        boxShadow: ElevationTokens.shadowCard,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,14 +271,14 @@ class _BalanceCardState extends ConsumerState<_BalanceCard>
             children: [
               const Icon(
                 Icons.account_balance_wallet_outlined,
-                color: NovaColors.onPrimary,
+                color: SemanticColors.onBrandPrimary,
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 'NovaWallet',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: NovaColors.onPrimary.withValues(alpha: 0.9),
+                      color: SemanticColors.onBrandPrimary.withValues(alpha: 0.9),
                       fontWeight: FontWeight.w600,
                     ),
               ),
@@ -293,7 +289,7 @@ class _BalanceCardState extends ConsumerState<_BalanceCard>
           Text(
             maskedAccount,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: NovaColors.onPrimary.withValues(alpha: 0.7),
+                  color: SemanticColors.onBrandPrimary.withValues(alpha: 0.7),
                 ),
           ),
           const SizedBox(height: 24),
@@ -316,9 +312,9 @@ class _BalanceCardState extends ConsumerState<_BalanceCard>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          NovaColors.onPrimary,
-                          NovaColors.onPrimary.withValues(alpha: 0.6),
-                          NovaColors.onPrimary,
+                          SemanticColors.onBrandPrimary,
+                          SemanticColors.onBrandPrimary.withValues(alpha: 0.6),
+                          SemanticColors.onBrandPrimary,
                         ],
                         stops: const [0.0, 0.5, 1.0],
                         transform: _SlidingGradientTransform(
@@ -329,7 +325,7 @@ class _BalanceCardState extends ConsumerState<_BalanceCard>
                     child: Text(
                       formatZmw(animatedValue.toStringAsFixed(2)),
                       style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                            color: NovaColors.onPrimary,
+                            color: SemanticColors.onBrandPrimary,
                             fontWeight: FontWeight.bold,
                             height: 1.1,
                           ),
@@ -343,7 +339,7 @@ class _BalanceCardState extends ConsumerState<_BalanceCard>
           Text(
             'Available Balance',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: NovaColors.onPrimary.withValues(alpha: 0.7),
+                  color: SemanticColors.onBrandPrimary.withValues(alpha: 0.7),
                 ),
           ),
           const SizedBox(height: 24),
@@ -413,11 +409,14 @@ class _QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final actions = [
-      _ActionData('Send', Icons.send_outlined, NovaColors.primary, onSend),
-      _ActionData('Request', Icons.call_received_outlined, NovaColors.secondary, onRequest),
-      _ActionData('Airtime', Icons.phone_android_outlined, NovaColors.warning, onAirtime),
-      _ActionData('Bills', Icons.receipt_long_outlined, NovaColors.secondary, onBills),
+      _ActionData('Send', Icons.send_outlined, scheme.primary, onSend),
+      _ActionData('Request', Icons.call_received_outlined, scheme.secondary, onRequest),
+      // Amber passes ≥ 4.5:1 on dark surfaces as-is, so it stays the same
+      // semantic token in both themes.
+      _ActionData('Airtime', Icons.phone_android_outlined, SemanticColors.warning, onAirtime),
+      _ActionData('Bills', Icons.receipt_long_outlined, scheme.secondary, onBills),
     ];
 
     return Column(
@@ -427,7 +426,6 @@ class _QuickActions extends StatelessWidget {
           'Quick Actions',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: NovaColors.onBackground,
               ),
         ),
         const SizedBox(height: 16),
@@ -537,7 +535,7 @@ class _AnimatedActionState extends State<_AnimatedAction>
           Text(
             widget.action.label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: NovaColors.onSurface,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w500,
                 ),
           ),
@@ -569,7 +567,6 @@ class _RecentTransactions extends StatelessWidget {
               'Recent Transactions',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: NovaColors.onBackground,
                   ),
             ),
             TextButton(
@@ -577,7 +574,7 @@ class _RecentTransactions extends StatelessWidget {
               child: Text(
                 'View All',
                 style: TextStyle(
-                  color: NovaColors.primary,
+                  color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
