@@ -8,6 +8,7 @@ import 'package:mocktail/mocktail.dart';
 
 import 'package:novawallet_app/core/network/api_exception.dart';
 import 'package:novawallet_app/core/widgets/pin_pad.dart';
+import 'package:novawallet_app/core/widgets/widgets.dart';
 import 'package:novawallet_app/features/transaction/data/transaction_repository.dart';
 import 'package:novawallet_app/features/transaction/models/fee_estimate.dart';
 import 'package:novawallet_app/features/transaction/models/transaction.dart';
@@ -75,14 +76,12 @@ void main() {
     walletRepository = _MockWalletRepository();
     transactionRepository = _MockTransactionRepository();
     when(() => walletRepository.getMyWallet()).thenAnswer((_) async => _wallet);
-    when(() => walletRepository.getBalance(any())).thenAnswer(
-      (_) async => _wallet,
-    );
     when(
-      () => transactionRepository.estimateFee(
-        type: 'WITHDRAWAL',
-        amount: '100',
-      ),
+      () => walletRepository.getBalance(any()),
+    ).thenAnswer((_) async => _wallet);
+    when(
+      () =>
+          transactionRepository.estimateFee(type: 'WITHDRAWAL', amount: '100'),
     ).thenAnswer(
       (_) async => const FeeEstimate(
         transactionType: 'WITHDRAWAL',
@@ -98,10 +97,10 @@ void main() {
     final router = GoRouter(
       initialLocation: '/withdraw',
       routes: [
-        GoRoute(path: '/withdraw', builder: (_, __) => const WithdrawScreen()),
+        GoRoute(path: '/withdraw', builder: (_, _) => const WithdrawScreen()),
         GoRoute(
           path: '/insufficient',
-          builder: (_, __) => const InsufficientBalanceScreen(),
+          builder: (_, _) => const InsufficientBalanceScreen(),
         ),
         GoRoute(
           path: '/success',
@@ -151,42 +150,80 @@ void main() {
   });
 
   testWidgets(
-    '409 insufficient balance closes the PIN sheet and routes to '
-    '/insufficient without retrying',
+    '409 idempotency-in-flight keeps the confirmation open and preserves '
+    'the operation key across retry',
     (tester) async {
-      var calls = 0;
-      when(
-        () => walletRepository.withdraw(
-          walletId: any(named: 'walletId'),
-          amount: any(named: 'amount'),
-          description: any(named: 'description'),
-          pin: any(named: 'pin'),
-          idempotencyKey: any(named: 'idempotencyKey'),
-        ),
-      ).thenAnswer((_) async {
-        calls++;
-        throw const ApiException(
-          message: 'Insufficient balance',
+      final keys = <String?>[];
+      _stubWithdrawInline(
+        walletRepository,
+        keys,
+        const ApiException(
+          message: 'Request is already being processed. Try again shortly.',
           statusCode: 409,
-        );
-      });
+        ),
+      );
 
       await pumpWithdraw(tester);
       await openConfirmation(tester);
       await _enterPin(tester, '1234');
+      await tester.pump();
+
+      // In-flight means the request may still execute: the sheet stays open
+      // with a retry-later message — never the /insufficient recovery route.
+      expect(
+        find.text('Request is already being processed. Try again shortly.'),
+        findsOneWidget,
+      );
+      expect(find.text('Confirm withdrawal'), findsOneWidget);
+      expect(find.byType(PinPad), findsOneWidget);
+      expect(find.text('Insufficient balance'), findsNothing);
+
+      // Retrying with the PIN reuses the same idempotency key so the backend
+      // can dedupe instead of executing twice.
+      await _enterPin(tester, '1234');
       await tester.pumpAndSettle();
 
-      expect(calls, 1);
-      // The sheet must be closed — no retry loop with an inline error.
-      expect(find.text('Confirm withdrawal'), findsNothing);
-      expect(find.byType(PinPad), findsNothing);
-      // The recovery screen must be shown instead.
-      expect(find.text('Insufficient balance'), findsOneWidget);
+      expect(keys, hasLength(2));
+      expect(keys.first, isNotNull);
+      expect(keys.first, equals(keys.last));
     },
   );
 
-  testWidgets('blocks system-back dismissal while authorization is in flight',
-      (tester) async {
+  testWidgets('400 insufficient balance closes the PIN sheet and routes to '
+      '/insufficient without retrying', (tester) async {
+    var calls = 0;
+    when(
+      () => walletRepository.withdraw(
+        walletId: any(named: 'walletId'),
+        amount: any(named: 'amount'),
+        description: any(named: 'description'),
+        pin: any(named: 'pin'),
+        idempotencyKey: any(named: 'idempotencyKey'),
+      ),
+    ).thenAnswer((_) async {
+      calls++;
+      throw const ApiException(
+        message: 'Insufficient balance (including fee of 2.50)',
+        statusCode: 400,
+      );
+    });
+
+    await pumpWithdraw(tester);
+    await openConfirmation(tester);
+    await _enterPin(tester, '1234');
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    // The sheet must be closed — no retry loop with an inline error.
+    expect(find.text('Confirm withdrawal'), findsNothing);
+    expect(find.byType(PinPad), findsNothing);
+    // The recovery screen must be shown instead.
+    expect(find.text('Insufficient balance'), findsOneWidget);
+  });
+
+  testWidgets('blocks system-back dismissal while authorization is in flight', (
+    tester,
+  ) async {
     final completer = Completer<WalletTransaction>();
     when(
       () => walletRepository.withdraw(
@@ -216,8 +253,9 @@ void main() {
     expect(find.text('Ref: NW-REF-1'), findsOneWidget);
   });
 
-  testWidgets('blocks barrier-tap dismissal while authorization is in flight',
-      (tester) async {
+  testWidgets('blocks barrier-tap dismissal while authorization is in flight', (
+    tester,
+  ) async {
     final completer = Completer<WalletTransaction>();
     when(
       () => walletRepository.withdraw(
@@ -273,31 +311,32 @@ void main() {
     expect(find.text('Withdrawal successful'), findsOneWidget);
   });
 
-  testWidgets('network error keeps the operation key and rebuilds the PIN pad', (
-    tester,
-  ) async {
-    final keys = <String?>[];
-    _stubWithdrawInline(
-      walletRepository,
-      keys,
-      const ApiException(message: 'Timed out'),
-    );
+  testWidgets(
+    'network error keeps the operation key and rebuilds the PIN pad',
+    (tester) async {
+      final keys = <String?>[];
+      _stubWithdrawInline(
+        walletRepository,
+        keys,
+        const ApiException(message: 'Timed out'),
+      );
 
-    await pumpWithdraw(tester);
-    await openConfirmation(tester);
-    await _enterPin(tester, '1234');
-    await tester.pump();
+      await pumpWithdraw(tester);
+      await openConfirmation(tester);
+      await _enterPin(tester, '1234');
+      await tester.pump();
 
-    expect(find.textContaining('check your connection'), findsOneWidget);
-    expect(find.text('Confirm withdrawal'), findsOneWidget);
+      expect(find.textContaining('check your connection'), findsOneWidget);
+      expect(find.text('Confirm withdrawal'), findsOneWidget);
 
-    await _enterPin(tester, '1234');
-    await tester.pumpAndSettle();
+      await _enterPin(tester, '1234');
+      await tester.pumpAndSettle();
 
-    expect(keys, hasLength(2));
-    expect(keys.first, isNotNull);
-    expect(keys.first, equals(keys.last));
-  });
+      expect(keys, hasLength(2));
+      expect(keys.first, isNotNull);
+      expect(keys.first, equals(keys.last));
+    },
+  );
 
   testWidgets('429 rate-limit keeps the operation key on retry', (
     tester,

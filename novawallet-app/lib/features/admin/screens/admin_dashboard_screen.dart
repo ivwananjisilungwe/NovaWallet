@@ -13,7 +13,8 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
 
   @override
-  ConsumerState<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+  ConsumerState<AdminDashboardScreen> createState() =>
+      _AdminDashboardScreenState();
 }
 
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
@@ -27,8 +28,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   void _reload() => setState(() {
-        _queue = ref.read(adminRepositoryProvider).pendingKyc();
-      });
+    _queue = ref.read(adminRepositoryProvider).pendingKyc();
+  });
 
   bool _isLoading(String userId) => _loadingIds.contains(userId);
 
@@ -53,8 +54,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       _reload();
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.displayMessage)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.displayMessage)));
       }
     } finally {
       if (mounted) _setLoading(item.userId, false);
@@ -72,8 +74,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       _reload();
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.displayMessage)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.displayMessage)));
       }
     } finally {
       if (mounted) _setLoading(item.userId, false);
@@ -93,13 +96,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         builder: (context, setState) => SimpleDialog(
           title: const Text('Select KYC Tier'),
           children: [
-            for (final tier in [1, 2, 3])
-              RadioListTile<int>(
-                title: Text('Tier $tier'),
-                value: tier,
-                groupValue: selectedTier,
-                onChanged: (value) => setState(() => selectedTier = value!),
+            RadioGroup<int>(
+              groupValue: selectedTier,
+              onChanged: (value) => setState(() => selectedTier = value!),
+              child: Column(
+                children: [
+                  for (final tier in [1, 2, 3])
+                    RadioListTile<int>(
+                      title: Text('Tier $tier'),
+                      value: tier,
+                    ),
+                ],
               ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
               child: FilledButton(
@@ -169,7 +178,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 return const LoadingView(message: 'Loading…');
               }
               if (snap.hasError) {
-                return ErrorStateView(message: '${snap.error}', onRetry: _reload);
+                return ErrorStateView(
+                  message: '${snap.error}',
+                  onRetry: _reload,
+                );
               }
               final items = snap.data ?? const [];
               return ListView(
@@ -224,9 +236,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text(item.email,
-                        style: const TextStyle(color: NovaColors.onSurfaceVariant, fontSize: 13)),
+                    Text(
+                      item.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      item.email,
+                      style: const TextStyle(
+                        color: NovaColors.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -251,7 +271,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               Expanded(
                 child: PillButton(
                   label: 'Reject',
-                  filled: false,
+                  variant: PillButtonVariant.outlined,
                   errorColor: true,
                   expanded: false,
                   loading: loading,

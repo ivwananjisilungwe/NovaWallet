@@ -21,6 +21,29 @@ class ApiException implements Exception {
   bool get isRateLimited => statusCode == 429;
   bool get isConflict => statusCode == 409;
 
+  /// Errors where the request may or may not have executed: network failure,
+  /// server-side 5xx, timeouts (408), rate limits (429) and idempotency
+  /// conflicts (409 «in-flight») must keep the same idempotency key so a
+  /// retry cannot double-execute. Definitive business rejections (e.g.
+  /// invalid PIN) are not ambiguous.
+  bool get isAmbiguous =>
+      isNetworkError ||
+      (statusCode != null &&
+          (statusCode! >= 500 ||
+              statusCode! == 408 ||
+              statusCode! == 409 ||
+              statusCode! == 429));
+
+  /// Conservative detection of the insufficient-balance contract: the backend
+  /// rejects with HTTP 400 and a message mentioning "insufficient balance"
+  /// (e.g. `Insufficient balance (including fee of ...)`). No machine-readable
+  /// error code reaches this model today, so only a 400 with that message
+  /// counts — other 400s (invalid PIN, invalid amount) are NOT treated as
+  /// insufficient.
+  bool get isInsufficientBalance =>
+      statusCode == 400 &&
+      message.toLowerCase().contains('insufficient balance');
+
   /// Convenience for `SnackBar`/inline error text.
   String get displayMessage {
     if (isNetworkError) {

@@ -12,6 +12,7 @@ import '../../../core/widgets/widgets.dart';
 import '../../transaction/models/fee_estimate.dart';
 import '../../transaction/models/transaction.dart';
 import '../../transaction/providers/transaction_provider.dart';
+import '../models/wallet.dart';
 import '../providers/wallet_provider.dart';
 
 /// Withdraw funds (per design 11-withdraw). Requires the transaction PIN.
@@ -37,13 +38,18 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
   }
 
   Future<void> _submit() async {
+    // Re-entry guard: disables the double-tap during the async wallet load.
+    if (_submitting) return;
     final amount = _amount.text.trim().replaceAll(',', '');
     if (double.tryParse(amount) == null || double.parse(amount) <= 0) {
       _toast('Enter a valid amount.');
       return;
     }
-    final wallet = ref.read(walletProvider).valueOrNull;
+    setState(() => _submitting = true);
+    final wallet = await _readWallet();
+    if (!mounted) return;
     if (wallet == null) {
+      setState(() => _submitting = false);
       _toast('Wallet not loaded yet.');
       return;
     }
@@ -58,27 +64,43 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
           .read(transactionRepositoryProvider)
           .estimateFee(type: 'WITHDRAWAL', amount: amount);
       if (!mounted) return;
-      final transaction = await _promptPin(
+      // The bottom sheet now owns the interaction state: the underlying
+      // button is hidden behind the modal barrier, and its loading spinner
+      // must stop — an indeterminate spinner would keep animating frames
+      // underneath the sheet for the whole PIN flow.
+      setState(() => _submitting = false);
+      final outcome = await _promptPin(
         walletId: wallet.id,
         amount: amount,
         description: desc,
         fee: fee,
         payload: payload,
       );
-      if (transaction == null) return;
-      await ref.read(walletProvider.notifier).refreshBalance();
-      if (!mounted) return;
-      _clearOperation();
-      context.push(
-        Uri(
-          path: '/success',
-          queryParameters: {
-            'title': 'Withdrawal successful',
-            'amount': transaction.amount,
-            'ref': transaction.reference,
-          },
-        ).toString(),
-      );
+      if (outcome == null) return;
+      switch (outcome) {
+        case _PinCancelled():
+          return;
+        case _PinInsufficient():
+          _clearOperation();
+          if (mounted) context.push('/insufficient');
+          return;
+        case _PinSuccess(:final transaction):
+          _clearOperation();
+          // Best-effort: refreshBalance is internally guarded and never throws.
+          await ref.read(walletProvider.notifier).refreshBalance();
+          if (!mounted) return;
+          context.push(
+            Uri(
+              path: '/success',
+              queryParameters: {
+                'title': 'Withdrawal successful',
+                'amount': transaction.amount,
+                'ref': transaction.reference,
+              },
+            ).toString(),
+          );
+          return;
+      }
     } on ApiException catch (e) {
       if (!e.isNetworkError) _clearOperation();
       if (mounted) _toast('Fee estimate unavailable. ${e.displayMessage}');
@@ -91,7 +113,17 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
     }
   }
 
-  Future<WalletTransaction?> _promptPin({
+  Future<Wallet?> _readWallet() async {
+    final current = ref.read(walletProvider).valueOrNull;
+    if (current != null) return current;
+    try {
+      return await ref.read(walletProvider.future);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<_PinOutcome?> _promptPin({
     required String walletId,
     required String amount,
     required String description,
@@ -103,108 +135,175 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
     String? inlineError;
     final total = (double.parse(amount) + double.parse(fee.totalFee))
         .toStringAsFixed(2);
-    return showModalBottomSheet<WalletTransaction>(
+    return showModalBottomSheet<_PinOutcome>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 16,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Confirm withdrawal',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: NovaColors.onBackground,
-                        ),
+        builder: (ctx, setSheetState) => PopScope(
+          canPop: !authorizing,
+          child: SafeArea(
+            child: SingleChildScrollView(
+              child: LayoutBuilder(
+                builder: (ctx, constraints) => GestureDetector(
+                  // While the withdrawal request is in flight the sheet must
+                  // not be dismissible by dragging. This recognizer sits
+                  // deeper than the sheet's own drag detector (and the scroll
+                  // view), so it wins the gesture arena and swallows the
+                  // gesture. Back and barrier dismissal are blocked by
+                  // PopScope above. Outside the in-flight window the handlers
+                  // are null and the sheet behaves normally.
+                  onVerticalDragStart: authorizing ? (_) {} : null,
+                  onVerticalDragUpdate: authorizing ? (_) {} : null,
+                  onVerticalDragEnd: authorizing ? (_) {} : null,
+                  child: ConstrainedBox(
+                    constraints: constraints.maxHeight.isFinite
+                        ? BoxConstraints(minHeight: constraints.maxHeight)
+                        : const BoxConstraints(),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: 24,
+                        right: 24,
+                        top: 16,
+                        bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Confirm withdrawal',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    color: NovaColors.onBackground,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: authorizing
+                                    ? null
+                                    : () => Navigator.of(
+                                        ctx,
+                                      ).pop(_PinCancelled()),
+                                child: const Text('Cancel'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text('Your PIN authorizes this withdrawal.'),
+                          const SizedBox(height: 16),
+                          _SummaryRow(
+                            label: 'Destination',
+                            value: 'Linked payout account',
+                          ),
+                          _SummaryRow(
+                            label: 'Amount',
+                            value: formatZmw(amount),
+                          ),
+                          _SummaryRow(
+                            label: 'Fee',
+                            value: formatZmw(fee.totalFee),
+                          ),
+                          _SummaryRow(
+                            label: 'Total',
+                            value: formatZmw(total),
+                            strong: true,
+                          ),
+                          if (inlineError != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              inlineError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: NovaColors.error),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          if (authorizing)
+                            // Static, non-animating in-flight state: an
+                            // indeterminate spinner would run forever and
+                            // block any dismissal/lifecycle pumpAndSettle
+                            // while the request is pending. Back, barrier and
+                            // drag dismissal are blocked by PopScope and the
+                            // gesture recognizer above, so a stable label is
+                            // the correct affordance here.
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 24),
+                                child: Text(
+                                  'Authorizing…',
+                                  style: TextStyle(
+                                    color: NovaColors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            PinPad(
+                              key: ValueKey(pinGeneration),
+                              length: 4,
+                              onComplete: (pin) async {
+                                setSheetState(() {
+                                  authorizing = true;
+                                  inlineError = null;
+                                });
+                                try {
+                                  _prepareOperation(payload);
+                                  final transaction = await ref
+                                      .read(walletRepositoryProvider)
+                                      .withdraw(
+                                        walletId: walletId,
+                                        amount: amount,
+                                        description: description,
+                                        pin: pin,
+                                        idempotencyKey: _idempotencyKey,
+                                      );
+                                  if (ctx.mounted) {
+                                    Navigator.of(
+                                      ctx,
+                                    ).pop(_PinSuccess(transaction));
+                                  }
+                                } on ApiException catch (e) {
+                                  if (e.isInsufficientBalance) {
+                                    // Definitive business outcome: close the
+                                    // sheet and route to recovery. Everything
+                                    // else is retried inline in the sheet.
+                                    if (ctx.mounted) {
+                                      Navigator.of(
+                                        ctx,
+                                      ).pop(_PinInsufficient());
+                                    }
+                                    return;
+                                  }
+                                  if (!e.isAmbiguous) {
+                                    _rotateOperationKey();
+                                  }
+                                  if (!ctx.mounted) return;
+                                  setSheetState(() {
+                                    authorizing = false;
+                                    inlineError = e.displayMessage;
+                                    pinGeneration++;
+                                  });
+                                } catch (_) {
+                                  if (!ctx.mounted) return;
+                                  setSheetState(() {
+                                    authorizing = false;
+                                    inlineError =
+                                        'Withdrawal failed. Check the '
+                                        'transaction history before retrying.';
+                                    pinGeneration++;
+                                  });
+                                }
+                              },
+                            ),
+                        ],
                       ),
                     ),
-                    TextButton(
-                      onPressed: authorizing
-                          ? null
-                          : () => Navigator.of(ctx).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text('Your PIN authorizes this withdrawal.'),
-                const SizedBox(height: 16),
-                _SummaryRow(
-                  label: 'Destination',
-                  value: 'Linked payout account',
-                ),
-                _SummaryRow(label: 'Amount', value: formatZmw(amount)),
-                _SummaryRow(label: 'Fee', value: formatZmw(fee.totalFee)),
-                _SummaryRow(
-                  label: 'Total',
-                  value: formatZmw(total),
-                  strong: true,
-                ),
-                if (inlineError != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    inlineError!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: NovaColors.error),
                   ),
-                ],
-                const SizedBox(height: 16),
-                if (authorizing)
-                  const Center(child: CircularProgressIndicator())
-                else
-                  PinPad(
-                    key: ValueKey(pinGeneration),
-                    length: 4,
-                    onComplete: (pin) async {
-                      setSheetState(() {
-                        authorizing = true;
-                        inlineError = null;
-                      });
-                      try {
-                        _prepareOperation(payload);
-                        final transaction = await ref
-                            .read(walletRepositoryProvider)
-                            .withdraw(
-                              walletId: walletId,
-                              amount: amount,
-                              description: description,
-                              pin: pin,
-                              idempotencyKey: _idempotencyKey,
-                            );
-                        if (ctx.mounted) Navigator.of(ctx).pop(transaction);
-                      } on ApiException catch (e) {
-                        if (!e.isNetworkError) _rotateOperationKey();
-                        if (!ctx.mounted) return;
-                        setSheetState(() {
-                          authorizing = false;
-                          inlineError = e.displayMessage;
-                          pinGeneration++;
-                        });
-                      } catch (_) {
-                        if (!ctx.mounted) return;
-                        setSheetState(() {
-                          authorizing = false;
-                          inlineError =
-                              'Withdrawal failed. Check the transaction history before retrying.';
-                          pinGeneration++;
-                        });
-                      }
-                    },
-                  ),
-              ],
+                ),
+              ),
             ),
           ),
         ),
@@ -290,6 +389,33 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
       ),
     );
   }
+}
+
+/// Type-safe outcome of the PIN authorization sheet.
+///
+/// The sheet never reports raw errors/booleans back: callers switch on the
+/// sealed variants to decide between staying, routing to the insufficient
+/// recovery screen, or proceeding with the executed transaction.
+sealed class _PinOutcome {
+  const _PinOutcome();
+}
+
+/// User cancelled (or dismissed) the sheet before any request was sent.
+class _PinCancelled extends _PinOutcome {
+  const _PinCancelled();
+}
+
+/// Definitive backend rejection (HTTP 400 insufficient balance). The sheet
+/// closes and the caller routes to the recovery screen.
+class _PinInsufficient extends _PinOutcome {
+  const _PinInsufficient();
+}
+
+/// The withdrawal executed successfully.
+class _PinSuccess extends _PinOutcome {
+  const _PinSuccess(this.transaction);
+
+  final WalletTransaction transaction;
 }
 
 class _SummaryRow extends StatelessWidget {

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:novawallet_app/core/network/api_exception.dart';
+import 'package:novawallet_app/core/widgets/widgets.dart';
 import 'package:novawallet_app/features/transaction/models/transaction.dart';
 import 'package:novawallet_app/features/transaction/screens/success_screen.dart';
 import 'package:novawallet_app/features/wallet/data/wallet_repository.dart';
@@ -57,9 +58,9 @@ void main() {
   setUp(() {
     walletRepository = _MockWalletRepository();
     when(() => walletRepository.getMyWallet()).thenAnswer((_) async => _wallet);
-    when(() => walletRepository.getBalance(any())).thenAnswer(
-      (_) async => _wallet,
-    );
+    when(
+      () => walletRepository.getBalance(any()),
+    ).thenAnswer((_) async => _wallet);
   });
 
   Future<void> pumpDeposit(WidgetTester tester) async {
@@ -68,7 +69,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/deposit',
       routes: [
-        GoRoute(path: '/deposit', builder: (_, __) => const DepositScreen()),
+        GoRoute(path: '/deposit', builder: (_, _) => const DepositScreen()),
         GoRoute(
           path: '/success',
           builder: (_, state) => SuccessScreen(
@@ -126,7 +127,38 @@ void main() {
     expect(keys.first, equals(keys.last));
   });
 
-  testWidgets('429 rate-limit keeps the operation key on retry', (tester) async {
+  testWidgets('409 idempotency-in-flight keeps the operation key on retry', (
+    tester,
+  ) async {
+    final keys = <String?>[];
+    _stubDepositWithFailure(
+      walletRepository,
+      keys,
+      const ApiException(
+        message: 'Request is already being processed. Try again shortly.',
+        statusCode: 409,
+      ),
+    );
+
+    await pumpDeposit(tester);
+    await submitDeposit(tester);
+
+    // In-flight deposit may still execute: money-in stays in the flow with a
+    // retry-later message, and the key must survive for dedupe.
+    expect(find.textContaining('already being processed'), findsOneWidget);
+
+    await waitForSnackBarToDismiss(tester);
+    await submitDeposit(tester);
+    await tester.pumpAndSettle();
+
+    expect(keys, hasLength(2));
+    expect(keys.first, isNotNull);
+    expect(keys.first, equals(keys.last));
+  });
+
+  testWidgets('429 rate-limit keeps the operation key on retry', (
+    tester,
+  ) async {
     final keys = <String?>[];
     _stubDepositWithFailure(
       walletRepository,
@@ -208,9 +240,7 @@ void main() {
       ).thenAnswer((_) async => _successTxn);
       // Post-success balance refresh must be best-effort: even when it fails,
       // the successful deposit must complete without an error message.
-      when(
-        () => walletRepository.getBalance(any()),
-      ).thenThrow(
+      when(() => walletRepository.getBalance(any())).thenThrow(
         const ApiException(message: 'Balance refresh failed', statusCode: 500),
       );
 

@@ -4,154 +4,165 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/nova_colors.dart';
 import '../../../core/widgets/widgets.dart';
 
-/// First-run onboarding carousel (per design 01-onboarding). Light, trust-led.
-class OnboardingScreen extends StatefulWidget {
+/// First-run onboarding (per Stitch novawallet_welcome_1).
+/// Single trust-led page: brand, hero, feature pills, CTAs.
+class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
 
-  @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
-}
-
-class _OnboardingScreenState extends State<OnboardingScreen> {
-  final PageController _controller = PageController();
-  int _page = 0;
-
-  static const _slides = [
-    (
-      icon: Icons.account_balance_wallet,
-      title: 'Your money, one wallet',
-      body: 'Send, receive and manage your money anywhere in Zambia — fast and secure.',
-    ),
-    (
-      icon: Icons.shield_outlined,
-      title: 'Bank-grade security',
-      body: 'End-to-end encryption, transaction PIN and real-time fraud monitoring keep you protected.',
-    ),
-    (
-      icon: Icons.flash_on_outlined,
-      title: 'Pay in seconds',
-      body: 'Airtime, bills, transfers and more — all from a clean, friendly mobile-first app.',
-    ),
+  static const _features = [
+    (icon: Icons.bolt, label: 'Instant transfers'),
+    (icon: Icons.shield_outlined, label: 'Bank-grade security'),
+    (icon: Icons.credit_card_outlined, label: 'Virtual cards'),
   ];
-
-  void _go(int page) {
-    _controller.animateToPage(
-      page,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NovaColors.background,
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: _slides.length,
-                onPageChanged: (i) => setState(() => _page = i),
-                itemBuilder: (context, i) {
-                  final s = _slides[i];
-                  return Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                NovaColors.primary,
-                                NovaColors.primaryContainer,
-                              ],
-                            ),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: NovaColors.shadowTint.withValues(alpha: 0.25),
-                                blurRadius: 24,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Icon(s.icon, size: 56, color: NovaColors.onPrimary),
-                        ),
-                        const SizedBox(height: 40),
-                        Text(
-                          s.title,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            color: NovaColors.onBackground,
-                            letterSpacing: -0.02,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          s.body,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            height: 1.5,
-                            color: NovaColors.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              const SizedBox(height: 32),
+              // Top logo
+              Container(
+                width: 72,
+                height: 72,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [NovaColors.primary, NovaColors.primaryContainer],
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet,
+                  color: NovaColors.onPrimary,
+                  size: 36,
+                ),
               ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < _slides.length; i++)
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: i == _page ? 24 : 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: i == _page
-                          ? NovaColors.primary
-                          : NovaColors.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(99),
+              // Hero copy
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    Text(
+                      'Your money, simplified.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        height: 1.33,
+                        letterSpacing: -0.01,
+                        color: NovaColors.primary,
+                      ),
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Send, receive, deposit and withdraw — all from your phone, right here in Zambia.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        height: 1.5,
+                        color: NovaColors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              // Hero illustration (gradient placeholder)
+              Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      NovaColors.primaryContainer.withValues(alpha: 0.25),
+                      NovaColors.primaryContainer.withValues(alpha: 0.0),
+                    ],
                   ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet,
+                  size: 100,
+                  color: NovaColors.primaryContainer,
+                ),
+              ),
+              const SizedBox(height: 32),
+              // Feature pills
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  PillButton(
-                    label: _page == _slides.length - 1 ? 'Get started' : 'Next',
-                    onPressed: () {
-                      if (_page == _slides.length - 1) {
-                        context.go('/register');
-                      } else {
-                        _go(_page + 1);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => context.push('/login'),
-                    child: const Text('I already have an account'),
-                  ),
+                  for (final f in _features)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: NovaColors.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: NovaColors.surfaceContainerHigh,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(f.icon, size: 16, color: NovaColors.primary),
+                          const SizedBox(width: 6),
+                          Text(
+                            f.label,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: NovaColors.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              // CTAs
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    PillButton(
+                      label: 'Get started',
+                      onPressed: () => context.go('/register'),
+                    ),
+                    const SizedBox(height: 12),
+                    PillButton(
+                      label: 'I already have an account',
+                      variant: PillButtonVariant.outlined,
+                      onPressed: () => context.push('/login'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Footer
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'By continuing you agree to our Terms & Privacy Policy.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: NovaColors.onSurfaceVariant.withValues(alpha: 0.8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );

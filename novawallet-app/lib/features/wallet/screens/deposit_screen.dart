@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/nova_colors.dart';
 import '../../../core/widgets/widgets.dart';
+import '../models/wallet.dart';
 import '../providers/wallet_provider.dart';
 
 /// Deposit funds (per design 10-deposit). No PIN required for money-in.
@@ -32,13 +33,18 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
   }
 
   Future<void> _submit() async {
+    // Re-entry guard: disables the double-tap during the async wallet load.
+    if (_submitting) return;
     final amount = _amount.text.trim().replaceAll(',', '');
     if (double.tryParse(amount) == null || double.parse(amount) <= 0) {
       _toast('Enter a valid amount.');
       return;
     }
-    final wallet = ref.read(walletProvider).valueOrNull;
+    setState(() => _submitting = true);
+    final wallet = await _readWallet();
+    if (!mounted) return;
     if (wallet == null) {
+      setState(() => _submitting = false);
       _toast('Wallet not loaded yet.');
       return;
     }
@@ -71,7 +77,7 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
         ).toString(),
       );
     } on ApiException catch (e) {
-      if (!e.isNetworkError) _clearOperation();
+      if (!e.isAmbiguous) _clearOperation();
       if (mounted) _toast(e.displayMessage);
     } catch (_) {
       if (mounted) {
@@ -81,6 +87,19 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// Resolves the wallet for this operation. The provider is lazily built, so
+  /// a screen reached via deep link / cold start may not have loaded it yet —
+  /// in that case wait on the provider's own future instead of failing.
+  Future<Wallet?> _readWallet() async {
+    final current = ref.read(walletProvider).valueOrNull;
+    if (current != null) return current;
+    try {
+      return await ref.read(walletProvider.future);
+    } catch (_) {
+      return null;
     }
   }
 

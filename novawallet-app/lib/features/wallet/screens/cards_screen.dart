@@ -29,8 +29,8 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
       lastFour: '4242',
       cardExpiry: '12/28',
       brand: 'VISA',
-      startColor: Color(0xFF3525CD),
-      endColor: Color(0xFF4F46E5),
+      startColor: NovaColors.primary,
+      endColor: NovaColors.primaryContainer,
     ),
     _MockCard(
       id: 'card_purple',
@@ -86,10 +86,13 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     super.dispose();
   }
 
-  _MockCard get _currentCard => _demoCards[_currentIndex.clamp(0, _demoCards.length - 1)];
+  _MockCard get _currentCard =>
+      _demoCards[_currentIndex.clamp(0, _demoCards.length - 1)];
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _toggleFreeze(_MockCard card) {
@@ -126,7 +129,8 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
                     cards: _demoCards,
                     frozenCardIds: _frozenCardIds,
                     currentIndex: _currentIndex,
-                    onPageChanged: (index) => setState(() => _currentIndex = index),
+                    onPageChanged: (index) =>
+                        setState(() => _currentIndex = index),
                   ),
                   const SizedBox(height: 20),
                   _CardActions(
@@ -164,7 +168,7 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: PillButton(
                       label: 'Add a new card',
-                      filled: false,
+                      variant: PillButtonVariant.outlined,
                       icon: Icons.add,
                       onPressed: () => _toast('Card issuance coming soon'),
                     ),
@@ -414,7 +418,9 @@ class _GradientCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 9,
                               letterSpacing: 1.2,
-                              color: NovaColors.onPrimary.withValues(alpha: 0.7),
+                              color: NovaColors.onPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 3),
@@ -439,7 +445,9 @@ class _GradientCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 9,
                               letterSpacing: 1.2,
-                              color: NovaColors.onPrimary.withValues(alpha: 0.7),
+                              color: NovaColors.onPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 3),
@@ -477,7 +485,11 @@ class _GradientCard extends StatelessWidget {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.lock_outline, size: 14, color: NovaColors.onWarning),
+                        Icon(
+                          Icons.lock_outline,
+                          size: 14,
+                          color: NovaColors.onWarning,
+                        ),
                         SizedBox(width: 6),
                         Text(
                           'FROZEN',

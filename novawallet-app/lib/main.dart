@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
 import 'app/router.dart';
+import 'core/cache/hive_boxes.dart';
 import 'core/network/api_client.dart';
 import 'core/providers.dart';
 import 'core/storage/token_storage.dart';
@@ -12,8 +13,9 @@ import 'core/storage/token_storage.dart';
 ///
 /// Composes the real dependency graph (overrides the throwing core providers)
 /// and boots the app with Riverpod + GoRouter.
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await HiveBoxes.init();
 
   final container = ProviderContainer(
     overrides: [
