@@ -392,6 +392,31 @@ NovaWallet's cards screen is design-stage demo data (`cards_demo_data.dart`) awa
 **Prerequisites:** Phase 11 live (11.1–11.3) · reuses velocity limits, fee engine, idempotency markers, admin console.
 **Compliance/fraud notes:** goods purchases are user-own-spending (no third-party settlement → lighter BoZ posture than Phase 11.5 merchants); still enforce KYC-tier caps; watch ZMW→USD volatility — buffer % must be configurable without redeploy.
 
+> **Evolution note:** Phase 12's pooled card is the launch wedge, not the destination. It proves demand and generates the revenue/KYB track record for Phase 13, after which digital-goods becomes one consumer of personal NovaWallet cards. See `docs/CARD-ISSUING-RESEARCH.md`.
+
+---
+
+## Phase 13 — NovaWallet Card Platform (per-user issuing) 📋 RESEARCH TRACK *(added 2026-08-22)*
+
+**Goal**: Every eligible NovaWallet user can create their own virtual Mastercard, funded from their ZMW wallet balance, with full lifecycle controls — spendable at Google/Netflix/Steam and international merchants.
+
+**Architecture principle:** card issuing is a separate domain from payment collection. Backend exposes a dedicated `CardIssuingProvider` SPI (`create/freeze/unfreeze/fund/setLimit/close/getTransactions`) alongside `PaymentGateway` — never merged into it.
+
+| Step | Task | Notes |
+|------|------|-------|
+| 13.1 | Issuer/BIN-sponsor selection | **Lead: Scale + Mastercard** (verified 31 Mar 2026 announcement covering Zambia; single integration = onboarding+processing+BIN+compliance). Backups: Codego, Fyatu. Diligence bank: docs/CARD-ISSUING-RESEARCH.md §3 |
+| 13.2 | Regulatory/KYB approval | BoZ posture assessment; NovaWallet KYC obligations vs provider-managed; legal review before contract |
+| 13.3 | Virtual card issuing | Create-card flow behind KYC-tier eligibility; PAN/proxy handling server-side only |
+| 13.4 | Wallet funding ↔ card ledger bridge | ZMW→USD conversion policy (spread configurable), fund/debit events mirrored into NovaWallet ledger |
+| 13.5 | Authorization webhooks | Real-time auth events → per-card transaction history + push notifications (FCM) |
+| 13.6 | Freeze/unfreeze + spending limits | Instant controls; per-user/per-card caps by KYC tier |
+| 13.7 | 3-D Secure & security controls | Enrollment flow, decline-handling UX (the Airtel-BIN-rejection lesson: test BINs against Google/Netflix/Steam pre-launch) |
+| 13.8 | Card reconciliation & disputes | Auth/clearing/chargeback pipeline mapped to audit trail |
+| 13.9 | Flutter card management UI | Replaces demo data in cards_screen (swap-point already isolated in `cards_demo_data.dart`) |
+| 13.10 | Physical cards | Later, same platform |
+
+**Gating criteria to start:** Phase 11 live · Phase 12 revenue evidence · Scale/Mastercard KYB approved · unit-economics model from real pricing (issuance/FX/monthly minimums vs teen willingness-to-pay).
+
 ---
 
 ## Known Remaining Gaps
