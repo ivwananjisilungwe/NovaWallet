@@ -81,6 +81,20 @@ app:
   idempotency:
     ttl-hours: 24
 
+  payments:
+    lipila:
+      # Lipila Zambia payment-gateway integration (mobile-money collections
+      # and disbursements). Disabled by default: the whole feature is inert
+      # until enabled=true AND real credentials are supplied.
+      # Master switch — gates outbound disbursement initiation (payouts).
+      enabled: ${LIPILA_ENABLED:false}
+      # Lipila REST base URL.
+      base-url: ${LIPILA_BASE_URL:https://api.lipila.dev/api/v1}
+      # Merchant API key sent as the x-api-key header on outbound calls.
+      api-key: ${LIPILA_API_KEY:}
+      # Shared secret verified (constant-time) on inbound webhook callbacks.
+      webhook-secret: ${LIPILA_WEBHOOK_SECRET:}
+
   transaction:
     velocity:
       # Anti-abuse guardrails on money-out flows (withdraw/transfer), enforced

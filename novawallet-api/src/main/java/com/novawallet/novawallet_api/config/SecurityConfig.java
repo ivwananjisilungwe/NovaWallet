@@ -96,6 +96,11 @@ public class SecurityConfig {
                                 "/api/v1/password/reset",
                                 "/api/v1/email/verify"
                         ).permitAll()
+                        // Payment-gateway webhooks: no user context exists, so the
+                        // shared-secret header (constant-time verified in
+                        // WebhookController) is the authentication. Payouts remain
+                        // authenticated — only this inbound callback path is open.
+                        .requestMatchers("/api/v1/webhooks/lipila/**").permitAll()
                         .requestMatchers(
                                 "/api/swagger-ui/**",
                                 "/api/swagger-ui.html",

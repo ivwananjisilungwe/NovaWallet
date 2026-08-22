@@ -23,6 +23,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
 
     Optional<Transaction> findByReference(String reference);
 
+    /**
+     * Idempotency check for payment-gateway webhooks: the provider reference
+     * is embedded in the transaction description as a deterministic marker
+     * ({@code [LIPILA:<referenceId>]}), so an exact-match existence query
+     * detects already-processed callbacks. Callers acquire the target wallet's
+     * pessimistic lock first so concurrent duplicate callbacks serialize and
+     * the second one observes the first one's committed row.
+     */
+    boolean existsByDescription(String description);
+
     Page<Transaction> findBySenderWalletIdOrReceiverWalletIdOrderByCreatedAtDesc(
             UUID senderWalletId, UUID receiverWalletId, Pageable pageable);
 
