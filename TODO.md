@@ -49,13 +49,34 @@
 
 | Check | Result |
 |---|---|
-| `./mvnw test` | ✅ **127/127 passed** — BUILD SUCCESS |
+| `./mvnw test` | ✅ **130/130 passed** — BUILD SUCCESS (incl. 3 velocity-limit tests) |
 | `flutter analyze` | ✅ No issues found |
-| `flutter test` | ✅ **182/182 passed** |
+| `flutter test` | ✅ **214/214 passed** (incl. biometric service/provider/screen/router suites) |
 
 ### Pre-existing failures found & fixed during verification (NOT caused by Wave 1)
 1. **`login_onboarding_screen_test.dart`** — asserted copy that doesn't exist ("Log in to your wallet", Checkbox, "Continue with phone", "Protected by 256-bit encryption"). Screen had evolved to Google sign-in; test was stale. Updated to match actual UI.
 2. **Email-gate fallout from commit `3865a34`** — `requireVerifiedEmail` was added to withdraw/transfer without updating integration tests → 403s. Fixed by adding `verifyEmailFor()` helper (EndpointTestSupport) + `markEmailVerified()` in TransactionFlowIntegrationTest setup.
+
+---
+
+## ✅ Wave 2 — COMPLETE
+
+### 🟡 Q1 — Transaction velocity limits (backend) · Agent · ✅ DONE
+- [x] `enforceVelocityLimits(userId, amount)`: 60-min rolling window, count cap (default 10/h) + amount cap (50,000 ZMW/h)
+- [x] Configurable via `app.transaction.velocity` (@ConfigurationProperties); no migration needed
+- [x] Enforced before PIN verification; typed 429 RATE_LIMITED errors
+- [x] 3 integration tests (count cap / amount-cap independence / window expiry)
+
+### 🟡 Q2 — Biometric unlock (frontend) · Agent · ✅ DONE
+- [x] local_auth ^2.3.0 wrapper; Hive-backed flag default OFF; capability-gated settings toggle
+- [x] Lock screen on cold start + background resume; retry UI + password fallback; PIN-set flow outranks lock (router bug found & fixed: gate was hijacking /pin/set redirects)
+- [x] Android USE_BIOMETRIC + FlutterFragmentActivity; iOS NSFaceIDUsageDescription
+- [x] Compile fixes applied by orchestrator (local_auth getter/method signatures, AuthState reads, mocktail fallback registration, double-dispose in tests)
+- ⚠️ Needs manual on-device testing (enrolled biometrics, permission denial, mid-prompt backgrounding)
+
+## ✅ Documentation Refresh — COMPLETE
+- [x] Root `README.md` rewritten (117 lines): architecture, quickstart, testing, stack
+- [x] `docs/PROJECT-PLAN.md` recreated (426 lines): Phases 0–9 ✅, Post-MVP Hardening ✅, Phase 10 substantially ✅ (FCM 10.7 ⏳), Phase 11 ⏳ + Zambia rails recommendation (Flutterwave primary; Paystack does not cover Zambia; virtual cards deferred — Sudo/Kora/Fyatu options noted)
 
 ---
 
@@ -77,3 +98,4 @@
 - **2026-08-21** — Tracker created. Wave 1 dispatched: Agents A/B (backend), C/D (frontend).
 - **2026-08-21** — Wave 1 complete: all 4 agents reported success. Verification: backend initially 124/127 (3 pre-existing 403s from untested email gate commit `3865a34`) → fixed test fixtures → **127/127 green**. Frontend: analyze clean; 181/182 → fixed stale login test assertions → **182/182 green**.
 - **2026-08-21** — Wave 1 committed across 8 conventional commits (gitignore restore, docs consolidation, api secrets hardening, api idempotency scoping, ui dark mode, app polish wave, config fix, test fix) and pushed to origin/main.
+- **2026-08-21** — Wave 2 complete: velocity limits (backend) + biometric unlock (frontend). Orchestrator fixed 9 compile/test defects from the cancelled first biometric attempt. Verified: backend 130/130, frontend analyze clean + 214/214. Docs refreshed (README.md + docs/PROJECT-PLAN.md). Branches: master fully contained in main → deleted on remote + local; single-branch repo.
