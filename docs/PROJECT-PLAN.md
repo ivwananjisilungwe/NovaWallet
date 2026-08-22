@@ -371,6 +371,28 @@ NovaWallet's cards screen is design-stage demo data (`cards_demo_data.dart`) awa
 
 ---
 
+## Phase 12 — Digital Goods & Pooled-Card Payments 📋 PLANNED *(added 2026-08-22)*
+
+**Goal**: Let MoMo-only users (the banked-out 14–25 segment) buy international digital products — Netflix, game currency, Google Play, hosting — paying in ZMW through Phase 11 rails while NovaWallet completes the USD side via **one pooled, good-BIN virtual card** it controls. This converts the founder's own pain point (Airtel Mastercard BIN-rejected on Google Cloud despite funded balance) into the product wedge: users never see issuer declines, prepaid discrimination, or AVS failures because the international leg is handled server-side on a proven BIN with retry logic.
+
+**Why pooled card beats per-user cards:** ~$5 total capital vs $5/user/month; BIN/AVS/retry expertise centralized; zero monthly barrier for teens; fraud surface rate-limited per user on your side.
+
+| Step | Task | Details | Est. |
+|------|------|---------|------|
+| 12.1 | Pooled card acquisition | Open Fyatu-class issuer account (verified costs: $5/card Mastercard World USD, min funding $5); fund from Phase 11 revenue; document BIN acceptance test suite against top targets (Google, Netflix, Steam, Meta ads) before committing | S |
+| 12.2 | Goods catalog & pricing engine | `goods` package: product entities (fixed-price SKUs like Netflix tiers / denominations like Google Play credit), ZMW↔USD pricing with FX buffer % + markup % (target 10–15%) stored in config, price-refresh job | M |
+| 12.3 | Order service | Order state machine `QUOTED → PAID → FULFILLING → DELIVERED/FAILED_REFUNDED`; idempotency via `[GOODS:<orderRef>]` transaction markers (same convention as LIPILA/MERCHANT); wallet debit + order row in one TX | M |
+| 12.4 | Card payment executor | Server-side executor calling issuer API (JIT auth where supported); bounded retries on soft declines; hard-decline → auto-refund to wallet + alert; full audit trail per attempt | M |
+| 12.5 | Fulfillment & delivery | Per-product fulfillment strategy: direct subscription payment (Netflix), code/voucher purchase + in-app delivery (Google Play), receipt-only proof; manual-review fallback queue for stuck orders | M |
+| 12.6 | Fraud & spend limits | Reuse velocity-limit infra: per-user daily/monthly goods caps by KYC tier; blocked-MCC list; new-device cooling period for high-value SKUs | S |
+| 12.7 | Flutter storefront screens | Catalog grid → product detail (ZMW price incl. fees shown upfront) → PIN confirm → status/receipt; order history tab | M |
+| 12.8 | Ops dashboard (admin) | Order monitor, refund tool, margin report, card-balance alerting (auto-pause store when float low) | S |
+
+**Prerequisites:** Phase 11 live (11.1–11.3) · reuses velocity limits, fee engine, idempotency markers, admin console.
+**Compliance/fraud notes:** goods purchases are user-own-spending (no third-party settlement → lighter BoZ posture than Phase 11.5 merchants); still enforce KYC-tier caps; watch ZMW→USD volatility — buffer % must be configurable without redeploy.
+
+---
+
 ## Known Remaining Gaps
 
 Stated honestly, consistent with the current codebase:
