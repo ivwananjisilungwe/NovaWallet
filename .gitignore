@@ -16,6 +16,9 @@ node_modules/
 .claude/
 .playwright-mcp/
 
+# ── Generated knowledge graphs (regenerable) ───────────────────────
+graphify-out/
+
 # ── Design tool exports (duplicate of .planning/prompts/) ──────────
 stitch_duplicate_of_novawallet/
 
