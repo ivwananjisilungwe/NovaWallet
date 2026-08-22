@@ -43,9 +43,11 @@ Stated plainly, so the comparison below is honest about what is built versus pla
 
 | Gateway | Coverage | Fit for NovaWallet |
 |---|---|---|
-| **Lipila** (primary rec) | Zambia-native; MTN + Airtel + **Zamtel Kwacha** collections & disbursements; card collections; bank disbursements; sandbox self-onboarding; official `lipila_flutter` SDK | Only option covering all three Zambian MoMo operators incl. Zamtel — the basis of differentiation #1 below |
+| **Lipila** (primary rec) | Zambia-native; MTN + Airtel + **Zamtel Kwacha** collections & disbursements; card collections; bank disbursements; sandbox self-onboarding; official `lipila_flutter` SDK; tiered settlement fees K5–K200 (verified); per-txn % shown at signup | Only option covering all three Zambian MoMo operators incl. Zamtel — the basis of differentiation #1 below. ⚠️ **Gate-0 diligence:** confirm wallet/deposit-withdrawal business models are accepted under its merchant compliance framework before signing |
 | **Lenco** by BroadPay (complement) | Bank rails/virtual accounts; MoMo operators `airtel\|mtn\|zamtel` (ZM + MW); status-verify endpoint; webhooks | Adds virtual accounts/bank disbursements Lipila doesn't lead with; requires business KYC pack |
-| **Flutterwave** (fallback) | Pan-African coverage incl. Zambia MoMo | Kept for cross-border later; `PROJECT-PLAN.md`'s original primary pick |
+| **Flutterwave** (fallback / cross-border) | Pan-Africa incl. Zambia MoMo (MTN/Airtel/Zamtel). **Verified ZM pricing: 3% local MoMo collections, 2% transfers, 4.8% international, excl. VAT; settlements ≤24h, MoMo payouts near-instant** | Strongest alternative — becomes primary if Lipila fails reliability/pricing/compliance checks, or first pick when cross-border matters. Benchmark: if Lipila's signup rate ≥ ~3%, Flutterwave's maturity argument strengthens |
+| **ZynlePay** (research) | Local Zambian gateway; online debit/credit-card acceptance positioning | Card-collection research candidate only — full MoMo+payout coverage unverified; do not treat as a complete gateway |
+| ~~Paystack~~ | Excellent DX, **no Zambia coverage confirmed** | Ruled out for MVP |
 
 ---
 

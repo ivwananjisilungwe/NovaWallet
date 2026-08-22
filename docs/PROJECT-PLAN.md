@@ -314,11 +314,12 @@ Production-hardening additions made after the original Phases 0–9 were finishe
 
 | Step | Task | Status |
 |------|------|--------|
-| 11.1 | Mobile-money deposit integration + webhook confirmation | 🟡 **Scaffold complete** (`payment` package, webhook endpoint, idempotent crediting) — awaiting Lipila account/keys |
-| 11.2 | ~~Paystack~~ Card payments | ⏳ Deferred — Paystack does not cover Zambia; card collections available via **Lipila** when needed |
+| **11.0** | **Gate 0 — compliance confirmation**: Lipila must confirm in writing that wallet/deposit-withdrawal business models are accepted under its merchant framework (we are a wallet, not e-commerce checkout) | ⏳ Ask at signup — could veto provider choice |
+| 11.1 | Mobile-money deposit integration + webhook confirmation | 🟡 **Scaffold complete** (`payment` package, webhook endpoint, idempotent crediting) — awaiting Lipila account/keys. Pre-go-live hardening: **Payment domain entity** (separate from ledger) with full state machine + **unique provider-reference column**, and webhook amount/currency verification against initiated intent |
+| 11.2 | ~~Paystack~~ Card payments | ⏳ Deferred — Paystack does not cover Zambia; card collections available via **Lipila** when needed (ZynlePay on card-research list) |
 | 11.3 | Withdraw/payout to mobile money | 🟡 **Scaffold complete** (`/wallets/{id}/payouts`, PIN+limits gated, rollback-on-rejection) — awaiting keys |
-| 11.4 | Webhook security (signature verification, idempotent processing) | 🟡 **Done in scaffold** — constant-time secret compare + `[LIPILA:<ref>]` idempotent markers; add HMAC if Lipila ships signed webhooks |
-| 11.5 | Transaction status sync & reconciliation | ⏳ Pending (status endpoint wired in `LipilaGateway.checkStatus`; reconciliation job for PENDING payouts outstanding) |
+| 11.4 | Webhook security (signature verification, idempotent processing) | 🟡 **Done in scaffold** — constant-time secret compare + `[LIPILA:<ref>]` idempotent markers; add HMAC if Lipila ships signed webhooks. **Stress test required:** same successful webhook ×100 concurrent ⇒ exactly ONE credit |
+| 11.5 | Transaction status sync & reconciliation | ⏳ Pending (`checkStatus` wired). Reconciliation outcomes taxonomy: `AUTO_RESOLVE / ADMIN_REVIEW / RETRY / REFUND`. **Never auto-retry a financial payment across providers** (double-charge risk) |
 
 ### Zambia rails recommendation *(updated 2026-08-22)*
 
