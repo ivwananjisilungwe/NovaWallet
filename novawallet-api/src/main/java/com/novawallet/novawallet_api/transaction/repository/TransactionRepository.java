@@ -42,6 +42,28 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
     BigDecimal sumDailyOutgoing(@Param("walletId") UUID walletId, @Param("since") LocalDateTime since);
 
     /**
+     * Counts the outgoing transactions (WITHDRAWAL + TRANSFER_DEBIT) a user has made
+     * since the given timestamp, across all of the user's wallets. Fee rows are excluded.
+     * Used for hourly velocity-limit enforcement (rolling window).
+     */
+    @Query("SELECT COUNT(t) FROM Transaction t JOIN Wallet w ON t.senderWalletId = w.id "
+            + "WHERE w.userId = :userId "
+            + "AND t.type IN ('WITHDRAWAL', 'TRANSFER_DEBIT') "
+            + "AND t.createdAt >= :since")
+    long countOutgoingByUserSince(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    /**
+     * Sums the total outgoing transaction amount (WITHDRAWAL + TRANSFER_DEBIT)
+     * a user has sent since the given timestamp, across all of the user's wallets.
+     * Fee rows are excluded. Used for hourly velocity-limit enforcement (rolling window).
+     */
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t JOIN Wallet w ON t.senderWalletId = w.id "
+            + "WHERE w.userId = :userId "
+            + "AND t.type IN ('WITHDRAWAL', 'TRANSFER_DEBIT') "
+            + "AND t.createdAt >= :since")
+    BigDecimal sumOutgoingByUserSince(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    /**
      * Find PENDING transactions created before the given timestamp.
      * Used by {@link PendingTransactionCleanupJob} to mark stale transactions as FAILED.
      */

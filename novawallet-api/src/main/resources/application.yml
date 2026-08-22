@@ -81,6 +81,14 @@ app:
   idempotency:
     ttl-hours: 24
 
+  transaction:
+    velocity:
+      # Anti-abuse guardrails on money-out flows (withdraw/transfer), enforced
+      # per-user over a rolling 60-minute window and layered on top of the
+      # KYC daily-send-limit. Fees are excluded from both counters.
+      max-outgoing-count-per-hour: 10
+      max-outgoing-amount-per-hour: 50000
+
   kyc:
     upload-dir: uploads/kyc
     tiers:

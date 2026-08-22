@@ -42,8 +42,11 @@ import java.util.UUID;
  * <p>All money-mutating methods are {@code @Transactional} and use pessimistic
  * locking ({@code SELECT ... FOR UPDATE}) to prevent race conditions. Balance
  * changes use atomic SQL updates with a {@code WHERE balance + ? >= 0} guard.
- * KYC tier limits are enforced before deposits and withdrawals. Notifications
- * are fired asynchronously after each operation.</p>
+ * Money-out flows (withdrawals, transfers) pass through two limit layers:
+ * per-user velocity limits (rolling-hour outgoing count and amount caps,
+ * enforced before PIN verification) followed by the KYC tier daily-send-limit;
+ * deposits are gated by the KYC tier wallet limit. Notifications are fired
+ * asynchronously after each operation.</p>
  */
 @Service
 @Transactional
@@ -143,9 +146,12 @@ public class TransactionService {
 
         requireVerifiedEmail(userId);
 
-        authService.verifyPin(userId, request.pin());
-
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
+
+        // Enforce velocity limits (hourly outgoing count + amount) before PIN verification
+        transactionLimitService.enforceVelocityLimits(userId, amount);
+
+        authService.verifyPin(userId, request.pin());
 
         // Enforce KYC daily-send-limit for outgoing transactions
         transactionLimitService.enforceDailySendLimit(userId, walletId, amount);
@@ -247,9 +253,12 @@ public class TransactionService {
 
         requireVerifiedEmail(userId);
 
-        authService.verifyPin(userId, request.pin());
-
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
+
+        // Enforce velocity limits (hourly outgoing count + amount) before PIN verification
+        transactionLimitService.enforceVelocityLimits(userId, amount);
+
+        authService.verifyPin(userId, request.pin());
 
         // Enforce KYC daily-send-limit for outgoing transfers
         transactionLimitService.enforceDailySendLimit(userId, senderWallet.getId(), amount);
