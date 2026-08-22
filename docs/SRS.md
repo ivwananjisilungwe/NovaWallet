@@ -2,9 +2,9 @@
 
 ## 1. Purpose
 
-NovaWallet is a digital wallet backend API that manages user accounts, wallet balances, financial transactions, identity verification (KYC), and virtual card issuing. It simulates real banking backend logic with proper security, validation, and audit trails. Phases integrate with Flutterwave for live mobile money deposits, withdrawals, and card payments.
+NovaWallet is a Zambia-first digital wallet platform: a Spring Boot backend managing user accounts, wallet balances, financial transactions, KYC, and payment rails, plus a Flutter mobile client. It implements banking-grade ledger semantics (pessimistic locking, balanceBefore/After pairs, append-only audit) with proper security, validation, and idempotent money movement. Live money flows through **Lipila** (primary gateway: MTN/Airtel/Zamtel MoMo collections & disbursements, card collections), with a phased roadmap toward bills/merchant checkout (Phase 11.5) and digital-goods payments via a pooled good-BIN card (Phase 12).
 
-**Target users**: University students, small business owners, and peer-to-peer users in Zambia requiring shared expense management, school fee payments, and person-to-person transfers.
+**Target users**: University students, youth (14–25) without bank accounts, small business owners, and peer-to-peer users in Zambia requiring transfers, bill payments, and online digital-goods purchases using only mobile money.
 
 ---
 
@@ -12,7 +12,7 @@ NovaWallet is a digital wallet backend API that manages user accounts, wallet ba
 
 **Core loop**: User registers → gets a wallet → deposits money → sends to another user → withdraws → sees history.
 
-**Status: MVP is ✅ COMPLETE.** Phases 0–9 built and tested (123 tests passing). Remaining work (Flutter app, Flutterwave) enhances the MVP but is not required for it to function as a wallet backend.
+**Status: MVP is ✅ COMPLETE and verified.** Backend phases 0–9 + hardening wave built and tested (**144 API tests passing**, H2 suite) with **Postgres parity proven** (26/26 money-path suites green on PostgreSQL 16). Flutter client substantially complete (**214 tests passing**, analyzer clean). Live-money enablement (Phase 11) is scaffolded and awaits gateway account credentials only.
 
 ### MVP Features (Built, Tested, Working)
 
@@ -39,48 +39,51 @@ NovaWallet is a digital wallet backend API that manages user accounts, wallet ba
 
 | Feature | Why Post-MVP | Required Before Launch? |
 |---------|--------------|------------------------|
-| **Flutter Mobile App** | API works without it. Users can interact via curl/any HTTP client | No |
-| **Flutterwave Payment Gateway** | Deposit/withdraw are mock without it. Needed for real money movement | **Yes — blocks real use** |
+| **Flutterwave / Paystack gateways** | Superseded — **Lipila is primary** (Zambia-native, all 3 MoMo operators, Flutter SDK, self-onboard sandbox); Paystack has no Zambia coverage. International rails deferred | No (Lipila scaffold merged; keys unblock) |
+| ~~Flutter Mobile App~~ | ✅ Substantially BUILT: auth/dashboard/send/history/cards/KYC/notifications/admin screens, dark mode (system-following), biometric unlock, offline banner — 214 tests green | Ship-blocking polish: FCM push only |
+| **Bills & Airtime + Merchant Checkout** | Phase 11.5 — converts app to daily-use "pay for life" | No (post-rails) |
+| **Digital Goods Store** | Phase 12 — pooled-card model for game/streaming purchases by MoMo-only youth | No (post-revenue) |
 | **Chilemba/Group Savings** | Differentiator feature, not core wallet functionality | No |
-| **School Fee Payments** | Requires onboarding real schools — operational overhead | No |
+| **School Fee Payments** | Folded into Phase 11.5 bills catalog | No |
 | **Split Bills / Shared Expenses** | Nice-to-have for students | No |
-| **Virtual Cards** | Speculative feature, requires card network partnership | No |
-| **Admin Dashboard UI** | Admin API exists, curl is sufficient for launch | No |
-| **AI Features** | Over-engineering for MVP | No |
+| **Virtual Cards (per-user issuing)** | Deferred; Phase 12 pooled-card model serves the need at ~$5 total instead of $5/user/month | No |
+| **Admin Dashboard UI** | Admin API exists, curl sufficient for launch | No |
+| **AI Features** | Roadmapped in docs/AI-STRATEGY.md (insights → fraud → assistant) | No |
 
 ### MVP Completion Checklist
 
 - [x] User registers with email + phone, gets JWT
 - [x] User sets transaction PIN (4-6 digits)
 - [x] User gets a wallet with unique account number
-- [x] User deposits money (mock)
+- [x] User deposits money (mock ledger; live via Lipila scaffold once keys set)
 - [x] User sends money to another user (atomic, with fee)
-- [x] User withdraws money (mock)
+- [x] User withdraws money (mock ledger; payout rails scaffolded)
 - [x] User views transaction history with filters
-- [x] Duplicate requests blocked by idempotency
+- [x] Duplicate requests blocked by idempotency (per-user scoped)
 - [x] Every balance change is audit-logged
-- [x] Rate limiting prevents brute-force attacks
-- [x] 123 tests passing
+- [x] Rate limiting + hourly velocity limits prevent abuse
+- [x] 144 backend tests passing · 214 Flutter tests passing · PG parity verified
 - [x] Docker + CI/CD ready for deployment
 
 ---
 
 ## 2. Scope
 
-NovaWallet is a RESTful API. There is no frontend. All interactions happen through HTTP endpoints returning JSON. The system handles:
+NovaWallet is a wallet platform: a RESTful Spring Boot API consumed by a Flutter mobile client over HTTP returning JSON. The system handles:
 
-- User registration and authentication
+- User registration and authentication (JWT + rotating refresh tokens, biometric unlock on client)
 - Wallet creation and balance management
-- Deposit, withdrawal, and transfer operations
+- Deposit, withdrawal, transfer, and payout operations with velocity controls
 - Transaction history with filtering and pagination
-- Fee calculation (configurable per transaction type)
-- Idempotency (duplicate charge prevention)
+- Fee calculation (configurable per transaction type, admin CRUD)
+- Per-user idempotency (duplicate charge prevention)
+- Payment rails via the Lipila gateway abstraction (MoMo collections/disbursements, card collections) with idempotent webhook processing
 - Scheduled transaction settlement and cleanup
 - Audit logging of all balance changes
 - Caching for frequently read data
-- KYC identity verification (multi-tier)
-- Virtual card issuing and management
-- Flutterwave payment gateway integration (mobile money, card, transfers)
+- KYC identity verification (multi-tier with daily/balance caps)
+
+Virtual card issuing per-user is superseded by the Phase 12 pooled-card digital-goods model (see PROJECT-PLAN).
 
 ---
 
@@ -97,6 +100,8 @@ NovaWallet is a RESTful API. There is no frontend. All interactions happen throu
 | U5 | Users can set a 4-6 digit transaction PIN for financial operations | High |
 | U6 | PIN hashed with BCrypt, rate-limited to 3 failed attempts per 15 minutes | High |
 | U7 | Users have roles: USER (default) and ADMIN | Medium |
+| U8 | Optional biometric unlock (device fingerprint/Face ID via local_auth): flag default OFF, capability-gated toggle, lock screen with retry + password fallback; mandatory PIN-setup flow outranks biometric gate | Medium |
+| U9 | Outgoing money operations require a verified email address (403 until verified) | High |
 
 ### 3.2 Wallet System
 
@@ -120,7 +125,9 @@ NovaWallet is a RESTful API. There is no frontend. All interactions happen throu
 | T4 | All money operations are atomic — partial failure rolls back entirely (@Transactional) | High |
 | T5 | Transaction records include: id, type, amount, description, status, timestamp, sender wallet, receiver wallet | High |
 | T6 | Transactions can be PENDING, SUCCESSFUL, or FAILED | Medium |
-| T7 | Flutterwave deposits are created as PENDING and marked SUCCESSFUL only after webhook confirmation | High |
+| T7 | Gateway deposits (Lipila collections) are credited only after webhook confirmation with a valid shared secret; duplicate callbacks are ignored idempotently via `[GATEWAY:<referenceId>]` ledger markers | High |
+| T8 | Hourly velocity limits on outgoing operations: max transactions/hour and max amount/hour (configurable via `app.transaction.velocity`), enforced before PIN verification, returning 429 RATE_LIMITED when breached | High |
+| T9 | Payouts to mobile money follow the same guardrail stack as withdrawals (PIN, velocity, daily KYC limit, email gate); provider rejection rolls back the local debit entirely and returns 400; gateway disabled → 503 SERVICE_UNAVAILABLE | Medium |
 
 ### 3.4 Fee Engine
 
@@ -138,11 +145,11 @@ NovaWallet is a RESTful API. There is no frontend. All interactions happen throu
 
 | ID | Requirement | Priority |
 |----|------------|----------|
-| I1 | Deposit, withdrawal, and transfer endpoints accept an Idempotency-Key header | High |
-| I2 | If a request with an existing key is received, return the cached response | High |
+| I1 | Deposit, withdrawal, transfer, and payout endpoints accept an Idempotency-Key header | High |
+| I2 | If a request with an existing key is received, return the cached response. Keys are **scoped per authenticated user** (stored as `"<userId>:<key>"`); anonymous endpoints keep global scope | High |
 | I3 | Idempotency records expire after 24 hours | Medium |
 | I4 | Expired records cleaned up by a scheduled job | Low |
-| I5 | Flutterwave webhooks deduplicated via `flw-ref` header | High |
+| I5 | Gateway webhooks deduplicated via deterministic ledger markers (`[LIPILA:<referenceId>]`); losing concurrent requests replay the cached response after bounded exponential-backoff polling, else 409 IDEMPOTENCY_IN_FLIGHT | High |
 
 ### 3.6 Scheduled Jobs
 
@@ -151,7 +158,19 @@ NovaWallet is a RESTful API. There is no frontend. All interactions happen throu
 | S1 | Daily at 3:00 AM: mark PENDING transactions older than 24 hours as FAILED | Medium |
 | S2 | Daily at 4:00 AM: delete idempotency records older than 24 hours | Low |
 | S3 | Jobs must be idempotent (running twice produces same result) | Medium |
-| S4 | Every 15 minutes: poll Flutterwave for pending transfer status updates | Medium |
+| S4 | Provider status polling for PENDING gateway transactions (reconciliation sweep) | Medium — Phase 11.5.6 |
+
+### 3.11 Client Application (Flutter)
+
+| ID | Requirement | Priority |
+|----|------------|----------|
+| C1 | Material 3 client with three-layer design tokens (primitive→semantic→component); dark mode follows the device system setting (`ThemeMode.system`), light mode unchanged | High |
+| C2 | Dark and light text contrast ≥ 4.5:1, enforced by automated contract tests | Medium |
+| C3 | Session tokens stored in device secure storage; single-flight refresh-token rotation on 401 with one retry | High |
+| C4 | Money mutations send per-user idempotency keys; operation key rotates on non-ambiguous failures | High |
+| C5 | API base URL resolves: `--dart-define=API_BASE_URL` override → Android emulator `10.0.2.2` → localhost; no machine-specific addresses committed | High |
+| C6 | Offline connectivity is surfaced via a persistent banner; skeleton loaders on async content | Medium |
+| C7 | Biometric unlock per U8; PIN pad flows for financial confirmation with operation-key rotation on retryable failures | High |
 | S5 | Daily at 2:00 AM: retry failed KYC verification callbacks | Low |
 
 ### 3.7 Audit Logging
@@ -209,18 +228,17 @@ NovaWallet is a RESTful API. There is no frontend. All interactions happen throu
 
 ## 8. Future Scope
 
-- Paystack integration (alternative payment gateway)
-- QR code payments
-- Recurring payments / standing orders
-- Kubernetes deployment with horizontal scaling
-- Push notifications to mobile app
-- Business/merchant accounts with sub-wallets
-- Multi-currency wallet support (USD, EUR, GBP)
+Sequenced per docs/PROJECT-PLAN.md:
+
+- **Phase 11 (go-live)**: Lipila credentials → live MoMo collections/payouts; reconciliation job for PENDING payouts
+- **Phase 11.5**: bills & airtime catalog, merchant checkout API + onboarding, hosted payment page
+- **Phase 12**: digital-goods storefront fulfilled via pooled good-BIN card (Netflix/game currency for MoMo-only users)
+- **Later**: NovaWallet Gateway merchant product · QR present-to-pay · recurring payments/standing orders · multi-currency wallets (USD) · Kubernetes scaling · FCM push notifications (10.7) · AI roadmap per docs/AI-STRATEGY.md
 
 ---
 
 ## GitHub Repo Description
 
-> **NovaWallet** — A production-grade digital wallet backend API built with Spring Boot. Supports user registration, wallet management, peer-to-peer transfers, deposits, withdrawals, configurable fees, idempotency, audit logging, and Flutterwave integration.
+> **NovaWallet** — A Zambia-first digital wallet: Spring Boot API + Flutter app. Banking-grade ledger (pessimistic locking, audit trail), per-user idempotency, velocity limits, KYC tiers, biometric unlock, dark mode, and Lipila mobile-money rails (MTN/Airtel/Zamtel) behind a provider-agnostic gateway abstraction.
 
-**Topics**: `flutter` `spring-boot` `fintech` `digital-wallet` `mobile-app` `dart` `java` `jwt-authentication` `postgresql` `flyway` `rest-api` `zambia` `flutterwave`
+**Topics**: `flutter` `spring-boot` `fintech` `digital-wallet` `mobile-app` `dart` `java` `jwt-authentication` `postgresql` `flyway` `rest-api` `zambia` `lipila` `mobile-money`
