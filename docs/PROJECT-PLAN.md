@@ -314,29 +314,41 @@ Production-hardening additions made after the original Phases 0–9 were finishe
 
 | Step | Task | Status |
 |------|------|--------|
-| 11.1 | Mobile-money deposit integration + webhook confirmation | ⏳ |
-| 11.2 | ~~Paystack~~ alternative gateway / card payments | ⏳ (see rails note below — Paystack does not cover Zambia) |
-| 11.3 | Withdraw/payout to mobile money | ⏳ |
-| 11.4 | Webhook security (signature verification, idempotent processing) | ⏳ |
-| 11.5 | Transaction status sync & reconciliation | ⏳ |
+| 11.1 | Mobile-money deposit integration + webhook confirmation | 🟡 **Scaffold complete** (`payment` package, webhook endpoint, idempotent crediting) — awaiting Lipila account/keys |
+| 11.2 | ~~Paystack~~ Card payments | ⏳ Deferred — Paystack does not cover Zambia; card collections available via **Lipila** when needed |
+| 11.3 | Withdraw/payout to mobile money | 🟡 **Scaffold complete** (`/wallets/{id}/payouts`, PIN+limits gated, rollback-on-rejection) — awaiting keys |
+| 11.4 | Webhook security (signature verification, idempotent processing) | 🟡 **Done in scaffold** — constant-time secret compare + `[LIPILA:<ref>]` idempotent markers; add HMAC if Lipila ships signed webhooks |
+| 11.5 | Transaction status sync & reconciliation | ⏳ Pending (status endpoint wired in `LipilaGateway.checkStatus`; reconciliation job for PENDING payouts outstanding) |
 
-### Zambia rails recommendation
+### Zambia rails recommendation *(updated 2026-08-22)*
 
-**Primary aggregator — Flutterwave.** A single Flutterwave integration covers both MTN MoMo and Airtel Money in Zambia for collections (deposits, step 11.1) and payouts (withdrawals, step 11.3). One contract, one webhook pipeline, one reconciliation process — the fastest route to live rails.
+**Primary gateway — Lipila** (Zambia-native; supersedes the original Flutterwave recommendation):
 
-**Alternatives worth evaluating alongside it:**
+- Covers MTN + Airtel + **Zamtel Kwacha** collections *and* disbursements, plus card collections and bank payouts — the only provider found covering all three Zambian operators.
+- Self-onboarding sandbox at `dashboard.lipila.dev` (live: `dashboard.lipila.io`) — no sales cycle to start building.
+- Official Flutter SDK (`lipila_flutter`) matches our client stack.
+- **Verified pricing shape:** per-transaction percentage fee on MoMo collections/disbursements (exact % shown per-transaction in merchant dashboard); tiered settlement charges K5→K200 by settlement amount; no setup/monthly fees advertised.
+- Backend integration is **already merged**: `PaymentGateway` SPI + `LipilaGateway` + webhook/payout endpoints behind `app.payments.lipila.*` (disabled until keys are set). Go-live = sign up → set `LIPILA_ENABLED/LIPILA_API_KEY/LIPILA_WEBHOOK_SECRET` env vars.
+- Note: disbursements require server IP whitelisting.
 
-- **Onafriq** (formerly MFS Africa) — widest mobile-money coverage across the continent; strong fit if regional expansion beyond Zambia is on the roadmap.
-- **DPO Group** — established pan-African payments aggregator with mobile-money support.
+**Secondary — Lenco (by BroadPay):** business bank rails, virtual accounts, MoMo transfers (ZM + Malawi). API v2, bearer auth, `collection.successful` webhooks. Adds bank-account payout corridor and multi-currency accounts. Requires Zambian business KYC docs (incorporation cert, PACRA <3 months, directors' IDs, corporate bank details).
 
-**Correction to the original plan:** step 11.2 assumed Paystack as an alternative gateway. **Paystack does not support Zambia**, so that assumption is wrong — treat card payments as a separate decision (see virtual cards below) rather than a Paystack dependency.
+**Deferred — international/cross-border:** ~~Flutterwave~~ / Onafriq / DPO become relevant only for expansion beyond Zambia (+Malawi edge case via Lenco) or USD card acceptance at scale. Not on the MVP critical path. Original plan's Paystack assumption remains invalid (no Zambia coverage).
 
-**Cost optimization at volume:** once transaction volume justifies the engineering cost, move high-volume corridors to direct integrations — **MTN MoMo Collections API** and/or **Airtel Africa OpenAPI** — cutting aggregator fees. Keep the aggregator as fallback during migration.
+**Cost optimization at volume:** once volume justifies engineering cost, move high-volume corridors direct — **MTN MoMo Collections API** and/or **Airtel Africa OpenAPI** — cutting aggregator percentage fees. Keep Lipila as fallback during any migration.
 
-**Virtual card issuing — hardest piece, defer or partner:**
+### Virtual cards — path & verified costs
 
-- Options today: **Sudo Africa**, **Kora Issuing**, **Fyatu** (stablecoin-funded). None is Zambia-domiciled; Union54 (the nearest local play) is paused.
-- Recommendation: **defer virtual cards until after launch**, or partner through one of those BaaS issuers when the product case is proven. Do not block mobile-money rails on this.
+NovaWallet's cards screen is design-stage demo data (`cards_demo_data.dart`) awaiting a real issuing relationship. Realistic paths:
+
+| Provider | Verified published costs | Notes |
+|---|---|---|
+| **Fyatu** (stablecoin-funded Visa/MC) | $5/card (Mastercard World USD), $10/card (Visa Platinum USD); min funding $5; funding fee per plan | Fastest self-serve; funding via USDT/USDC adds crypto dependency |
+| **Gpaynow-style BaaS** | $1–$50/card creation; 2.5% funding; 1.5% withdrawal of unspent; ~$1/card/mo maintenance | NGN-centric BINs |
+| Enterprise issuers (Reap/Rain/Interlace class) | Setup $5K–$80K+, monthly minimums $2K–$20K/mo | Only at serious scale |
+| **Union54 lineage** (ChitChat/Zazu's issuer) | ChitChat charges ~$5/mo per virtual card (user-reported) | Union54 paused after fraud incident; watch for revival |
+
+**Recommendation stands: defer virtual cards until after mobile-money launch.** When ready, cheapest credible route is a Fyatu-class partnership (~$5–10/card + funding %) resold inside NovaWallet, or renegotiated BaaS rates once volume proves the product case. Do not block rails on it.
 
 **Mandatory prerequisites before any provider goes live:** steps **11.4 (webhook signature verification + idempotent processing)** and **11.5 (status sync + reconciliation)** must be implemented and tested first — the backend's existing idempotency and audit infrastructure should be reused for this.
 
