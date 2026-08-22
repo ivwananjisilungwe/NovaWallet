@@ -128,6 +128,10 @@ Virtual card issuing per-user is superseded by the Phase 12 pooled-card digital-
 | T7 | Gateway deposits (Lipila collections) are credited only after webhook confirmation with a valid shared secret; duplicate callbacks are ignored idempotently via `[GATEWAY:<referenceId>]` ledger markers | High |
 | T8 | Hourly velocity limits on outgoing operations: max transactions/hour and max amount/hour (configurable via `app.transaction.velocity`), enforced before PIN verification, returning 429 RATE_LIMITED when breached | High |
 | T9 | Payouts to mobile money follow the same guardrail stack as withdrawals (PIN, velocity, daily KYC limit, email gate); provider rejection rolls back the local debit entirely and returns 400; gateway disabled → 503 SERVICE_UNAVAILABLE | Medium |
+| T10 | External gateway interactions are modeled as first-class Payment records (separate from ledger Transactions) with an explicit state machine: PENDING → PROCESSING → SUCCESS / FAILED / REVERSED; each provider reference is unique at the database level | High |
+| T11 | Users initiate MoMo deposits via an authenticated endpoint that creates a PENDING Payment and triggers a provider collection; wallet credit occurs only on verified webhook confirmation of that Payment | High |
+| T12 | Webhook processing verifies callback amount AND currency AND reference against the initiated Payment record before any credit; mismatches are rejected loudly (non-2xx) and audit-logged | High |
+| T13 | A scheduled reconciliation sweep compares stale PENDING Payments against provider status, resolving via AUTO_RESOLVE, ADMIN_REVIEW, RETRY, or REFUND taxonomies; cross-provider automatic retry of financial payments is prohibited | Medium |
 
 ### 3.4 Fee Engine
 
@@ -171,6 +175,7 @@ Virtual card issuing per-user is superseded by the Phase 12 pooled-card digital-
 | C5 | API base URL resolves: `--dart-define=API_BASE_URL` override → Android emulator `10.0.2.2` → localhost; no machine-specific addresses committed | High |
 | C6 | Offline connectivity is surfaced via a persistent banner; skeleton loaders on async content | Medium |
 | C7 | Biometric unlock per U8; PIN pad flows for financial confirmation with operation-key rotation on retryable failures | High |
+| C8 | MoMo deposit flow surfaces explicit payment states (initiated → pending provider prompt → confirmed/failed) so users understand where their money is at every step | High |
 | S5 | Daily at 2:00 AM: retry failed KYC verification callbacks | Low |
 
 ### 3.7 Audit Logging

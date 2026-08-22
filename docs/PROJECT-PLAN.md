@@ -321,6 +321,18 @@ Production-hardening additions made after the original Phases 0–9 were finishe
 | 11.4 | Webhook security (signature verification, idempotent processing) | 🟡 **Done in scaffold** — constant-time secret compare + `[LIPILA:<ref>]` idempotent markers; add HMAC if Lipila ships signed webhooks. **Stress test required:** same successful webhook ×100 concurrent ⇒ exactly ONE credit |
 | 11.5 | Transaction status sync & reconciliation | ⏳ Pending (`checkStatus` wired). Reconciliation outcomes taxonomy: `AUTO_RESOLVE / ADMIN_REVIEW / RETRY / REFUND`. **Never auto-retry a financial payment across providers** (double-charge risk) |
 
+### Phase 11 Pre-Launch Integrity Wave ("Wave 5") 📋 PLANNED *(added 2026-08-22)*
+
+Buildable immediately against the mock gateway — no keys required. Completes the "real-money safety" gates identified in external review before go-live.
+
+| Unit | Task | Gate it satisfies |
+|------|------|-------------------|
+| W5.1 | `Payment` domain entity + Flyway V12: first-class payments table, state machine `PENDING→PROCESSING→SUCCESS/FAILED/REVERSED`, **unique provider-reference column** | One external payment ⇔ one settlement (double-credit window closed) |
+| W5.2 | Deposit initiation API: `POST /api/v1/wallets/{id}/deposits/momo` → gateway collection initiated → `Payment(PENDING)` → webhook confirms → credit | Missing user-facing half of 11.1 |
+| W5.3 | Webhook amount/currency verification against initiated `Payment` record before crediting | Never trust `status==SUCCESS` alone |
+| W5.4 | Concurrent stress test: same successful webhook ×100 parallel ⇒ exactly ONE credit | Mechanical proof of idempotency invariant |
+| W5.5 | Reconciliation job skeleton: scheduled sweep of stale PENDING payments → `checkStatus` → `AUTO_RESOLVE / ADMIN_REVIEW / RETRY / REFUND` | Status-sync launch gate (11.5) |
+
 ### Zambia rails recommendation *(updated 2026-08-22)*
 
 **Primary gateway — Lipila** (Zambia-native; supersedes the original Flutterwave recommendation):

@@ -82,6 +82,13 @@
 
 ## 📋 Queued (Wave 2+ — sequenced to avoid conflicts)
 
+### Wave 5 — Payment Integrity & Deposit Flow (PLANNED, buildable without keys)
+- [ ] W5.1 `Payment` entity + Flyway V12 (state machine + unique provider-reference)
+- [ ] W5.2 Deposit initiation API (`POST /wallets/{id}/deposits/momo`)
+- [ ] W5.3 Webhook amount/currency verification vs initiated intent
+- [ ] W5.4 Concurrent stress test: ×100 same webhook ⇒ exactly ONE credit
+- [ ] W5.5 Reconciliation job skeleton (AUTO_RESOLVE/ADMIN_REVIEW/RETRY/REFUND)
+
 | # | Task | Blocked by / reason |
 |---|---|---|
 | Q1 | Transaction velocity limits (backend) | After B2 ✓ — clear now; owns next Flyway migration |
