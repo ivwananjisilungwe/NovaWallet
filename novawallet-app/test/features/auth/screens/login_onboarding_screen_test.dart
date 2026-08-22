@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
-import 'package:novawallet_app/core/widgets/pill_button.dart';
 import 'package:novawallet_app/core/widgets/widgets.dart';
 import 'package:novawallet_app/features/auth/data/auth_repository.dart';
 import 'package:novawallet_app/features/auth/providers/auth_provider.dart';

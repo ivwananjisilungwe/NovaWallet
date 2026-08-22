@@ -1,6 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Required for all network access (release builds too). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Biometric unlock (local_auth): shows the system BiometricPrompt.
+         No biometric data ever reaches the app — the OS owns enrollment and
+         matching; we only receive a success/failure boolean. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <!-- ACTIVITY CHANGE NOTE (required by local_auth):
+         MainActivity must extend io.flutter.embedding.android.FlutterFragmentActivity
+         (not FlutterActivity) because AndroidX BiometricPrompt only works with
+         FragmentActivity. See android/app/src/main/kotlin/com/novawallet/
+         novawallet_app/MainActivity.kt. -->
     <application
         android:label="novawallet_app"
         android:name="${applicationName}"

@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../../core/transitions/page_transitions.dart';
+import 'screens/biometric_lock_screen.dart';
 import 'screens/change_password_screen.dart';
 import 'screens/change_pin_screen.dart';
 import 'screens/forgot_password_screen.dart';
@@ -21,6 +22,17 @@ List<RouteBase> authRoutes = [
       type: TransitionType.fadeIn,
       key: state.pageKey,
       child: const SplashScreen(),
+    ),
+  ),
+  // Biometric unlock gate — parked on while the flag is ON and the saved
+  // session has not been unlocked this cycle. Success proceeds authenticated;
+  // cancel/fail falls back to /login.
+  GoRoute(
+    path: '/biometric-lock',
+    pageBuilder: (context, state) => AppPageRoute(
+      type: TransitionType.fadeIn,
+      key: state.pageKey,
+      child: const BiometricLockScreen(),
     ),
   ),
   GoRoute(

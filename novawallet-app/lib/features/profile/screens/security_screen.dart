@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/nova_colors.dart';
+import '../../auth/providers/biometric_provider.dart';
 
-/// Security center (per design 33). Change PIN / password entry points.
-class SecurityScreen extends StatelessWidget {
+/// Security center (per design 33). Change PIN / password entry points plus
+/// the optional biometric-unlock toggle.
+class SecurityScreen extends ConsumerWidget {
   const SecurityScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bio = ref.watch(biometricProvider);
+
     final items = <Widget>[
       _Item(
         icon: Icons.pin_outlined,
@@ -23,6 +28,38 @@ class SecurityScreen extends StatelessWidget {
         onTap: () => context.push('/change-password'),
       ),
     ];
+
+    // Capability-gated visibility:
+    //   * unsupported hardware            -> tile hidden entirely,
+    //   * supported but nothing enrolled  -> visible but disabled,
+    //   * fully usable                    -> active switch.
+    final Widget? biometricTile = !bio.state.checked
+        ? null
+        : !bio.state.deviceSupported
+            ? null
+            : SwitchListTile(
+                secondary: Icon(
+                  Icons.fingerprint,
+                  color: bio.state.usable
+                      ? NovaColors.primary
+                      : NovaColors.onSurfaceVariant,
+                ),
+                title: const Text(
+                  'Biometric unlock',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  bio.state.usable
+                      ? 'Use fingerprint or Face ID to open the app'
+                      : 'No biometrics enrolled on this device',
+                ),
+                value: bio.state.enabled && bio.state.usable,
+                onChanged: bio.state.usable
+                    ? (value) => ref
+                        .read(biometricProvider.notifier)
+                        .setEnabled(value)
+                    : null,
+              );
 
     return Scaffold(
       backgroundColor: NovaColors.background,
@@ -51,6 +88,16 @@ class SecurityScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
+            if (biometricTile != null) ...[
+              Container(
+                decoration: BoxDecoration(
+                  color: NovaColors.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: biometricTile,
+              ),
+              const SizedBox(height: 20),
+            ],
             Container(
               decoration: BoxDecoration(
                 color: NovaColors.surfaceContainerLowest,

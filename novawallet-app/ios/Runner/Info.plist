@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>NovaWallet uses the camera to capture your ID documents for verification.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>NovaWallet uses Face ID to unlock your wallet securely. Your biometric data never leaves your device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>NovaWallet accesses your photo library so you can upload ID documents for verification.</string>
 	<key>UIApplicationSceneManifest</key>
