@@ -86,8 +86,8 @@
 |---|---|---|
 | Q1 | Transaction velocity limits (backend) | After B2 ✓ — clear now; owns next Flyway migration |
 | Q2 | Biometric unlock via `local_auth` (frontend) | After F2 ✓ — clear now |
-| Q3 | Postgres-backed money-path integration run | Needs Docker running; kills H2/PG parity risk |
-| Q4 | Split 5 oversized screens (>400 LOC): send 710, dashboard 695, widgets 647, cards 594, fee_config 591 | Clear |
+| Q3 | Postgres-backed money-path integration run | ⚡ **Network constraint:** connection capped ~120KB/s — NEVER pull Docker images. Local `postgres:16` image verified present; run via `docker run` on port 5433 (NOT compose's `postgres:16-alpine`, which would pull). Owner may pre-pull other images on unmetered network when needed |
+| Q4 | ~~Split 5 oversized screens~~ | ✅ DONE 2026-08-22 (send 710→319, dashboard 693→97, widgets barrel pure, fee_config 592→243; 19 new files) |
 | Q5 | Stricter lint rules (`strict-casts`, etc.) | After Q4 |
 | Q6 | Dark-mode sweep of core widgets + cards_screen raw hexes | Follow-up from F2 |
 | Q7 | Replace IdempotencyFilter Thread.sleep polling | Follow-up from B2 |
@@ -99,4 +99,5 @@
 - **2026-08-21** — Wave 1 complete: all 4 agents reported success. Verification: backend initially 124/127 (3 pre-existing 403s from untested email gate commit `3865a34`) → fixed test fixtures → **127/127 green**. Frontend: analyze clean; 181/182 → fixed stale login test assertions → **182/182 green**.
 - **2026-08-21** — Wave 1 committed across 8 conventional commits (gitignore restore, docs consolidation, api secrets hardening, api idempotency scoping, ui dark mode, app polish wave, config fix, test fix) and pushed to origin/main.
 - **2026-08-22** — Session paused mid-Wave-3. IN TREE, UNVERIFIED+UNCOMMITTED: Agent A payments scaffold (Lipila gateway/webhooks/payouts, 14 tests) + Agent B dark sweep (pill_button/skeleton/cards_screen + demo-data extraction). NOT DONE: screen splits (agent failed 2×), idempotency backoff + prod mail fail-fast. Full state, prompts, research digest: **HANDOFF_2026-08-22.md**.
+- **2026-08-22 (resumed)** — Wave 3 COMPLETE & verified: backend **144/144**, frontend analyze clean + **214/214**, Postgres parity **26/26 zero divergences** (local postgres:16, port 5433, no pulls). Orchestrator fixed: 3 payment-test defects (fee semantics 0.50 min-clamp, provider-rejection→400 rollback, status-path assertion) + send_screen import path. Screen splits landed (send 710→319, dashboard 693→97, barrel pure, fee_config 592→243). Hygiene: exponential poll backoff (25→200ms cap) + prod mail fail-fast. New docs: COMPETITIVE-ANALYSIS.md + AI-STRATEGY.md (owed deliverables ✅). Old handoff archived to docs/.
 - **2026-08-21** — Wave 2 complete: velocity limits (backend) + biometric unlock (frontend). Orchestrator fixed 9 compile/test defects from the cancelled first biometric attempt. Verified: backend 130/130, frontend analyze clean + 214/214. Docs refreshed (README.md + docs/PROJECT-PLAN.md). Branches: master fully contained in main → deleted on remote + local; single-branch repo.
