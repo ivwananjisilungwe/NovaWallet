@@ -354,6 +354,23 @@ NovaWallet's cards screen is design-stage demo data (`cards_demo_data.dart`) awa
 
 ---
 
+## Phase 11.5 — Bills, Airtime & Merchant Checkout 📋 PLANNED *(added 2026-08-22)*
+
+**Goal**: Convert NovaWallet from "send money to friends" into "pay for life" — daily-utility spending that works entirely on the Phase 11 rails, no cards needed. This is the highest-leverage build after go-live: it creates daily-use habits and merchant-side network effects before virtual cards ever ship.
+
+| Step | Task | Details | Est. |
+|------|------|---------|------|
+| 11.5.1 | Bills catalog & service | `bills` package: `BillProvider` entity (ZESCO electricity tokens, DSTV/GOtv, water, school fees), customer-reference validation per provider, payment via Lipila disbursement/collection to biller account, receipt stored as Transaction with `[BILL:<provider>:<custRef>]` marker | M |
+| 11.5.2 | Airtime top-up (self + others) | Direct MoMo airtime purchase flows; own-number one-tap + gift-to-number; batch/scheduled top-ups later | S |
+| 11.5.3 | Merchant checkout API | `POST /api/v1/checkout` (public, rate-limited): merchant supplies order ref + amount → returns hosted-payment URL / USSD prompt; webhook confirms to merchant `callbackUrl` reusing the existing idempotent webhook pipeline (`[MERCHANT:<orderRef>]` markers) | M |
+| 11.5.4 | Merchant onboarding & keys | `merchant` role: register business → issued API key pair (pk_…/sk_…) hashed like refresh tokens; per-merchant fee config rows in existing `fee_configurations`; settlement to merchant wallet or bank payout (Lipila) | M |
+| 11.5.5 | Checkout Flutter screens | Pay-from-balance sheet + MoMo-prompt flow + success/receipt screens; QR present-to-pay for physical merchants | M |
+| 11.5.6 | Reconciliation job | Extend scheduler pattern: nightly sweep of PENDING bill/checkout transactions vs provider status (`checkStatus`), auto-settle or flag for admin review | S |
+
+**Prerequisites:** Phase 11 live keys (11.1–11.3) · 11.5.6 requires 11.5 status polling. **Compliance note:** merchant settlement = holding third-party funds; keep balances ring-fenced per wallet (already ledger-enforced) and seek BoZ guidance once merchant volume is material.
+
+---
+
 ## Known Remaining Gaps
 
 Stated honestly, consistent with the current codebase:
