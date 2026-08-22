@@ -15,7 +15,14 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Idempotency key lifecycle: INSERT-first, poll-and-replay, TTL cleanup. */
+/**
+ * Idempotency key lifecycle: INSERT-first, poll-and-replay, TTL cleanup.
+ *
+ * <p>Keys are scoped per authenticated user: the filter passes the value
+ * produced by {@link #scopedKey(UUID, String)} and every lookup
+ * ({@code complete}, {@code deleteProcessing}, {@code getCachedResponse},
+ * {@code getRecord}) operates on that same scoped storage key.</p>
+ */
 @Service
 public class IdempotencyService {
 
@@ -33,10 +40,28 @@ public class IdempotencyService {
     }
 
     /**
-     * Attempts to atomically acquire an idempotency key for this request.
-     * The database unique constraint on {@code idempotency_key} prevents
-     * concurrent duplicate inserts from racing requests.
+     * Builds the per-user storage key written to the {@code idempotency_key}
+     * column. Authenticated requests are scoped as {@code "<userId>:<key>"} so
+     * two different users can safely reuse the same raw key without colliding;
+     * unauthenticated requests (public endpoints such as register/login or
+     * future webhooks) fall back to the raw key, preserving today's global
+     * dedup behavior for anonymous traffic.
      *
+     * <p>The resulting value must fit {@code VARCHAR(255)} – callers should
+     * bound the raw key length accordingly.</p>
+     */
+    public static String scopedKey(UUID userId, String rawKey) {
+        return userId == null ? rawKey : userId + ":" + rawKey;
+    }
+
+    /**
+     * Attempts to atomically acquire an idempotency key for this request.
+     * The database unique constraint on the stored (scoped) {@code idempotency_key}
+     * value prevents concurrent duplicate inserts from racing requests.
+     *
+     * @param key   the scoped storage key produced by {@link #scopedKey}
+     * @param userId the authenticated user this key belongs to (recorded for
+     *               observability; may be null for anonymous endpoints)
      * @return true if this request acquired the key and should process; false if
      * another request already claimed it
      */

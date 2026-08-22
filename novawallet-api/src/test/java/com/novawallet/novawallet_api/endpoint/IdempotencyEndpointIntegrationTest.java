@@ -76,6 +76,13 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
                 .getContentAsString();
 
         Assertions.assertEquals(firstResponse, secondResponse);
+
+        // The replay must have been served from the cached record – exactly one
+        // row exists for this key (keys are stored scoped as "<userId>:<key>").
+        long rowsForKey = idempotencyKeyRepository.findAll().stream()
+                .filter(ik -> ik.getIdempotencyKey().endsWith(key))
+                .count();
+        Assertions.assertEquals(1, rowsForKey, "Same-user replay must hit the cache, not create a second row");
     }
 
     @Test
@@ -155,6 +162,7 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
     void withdraw_withIdempotencyKey_shouldSucceed() throws Exception {
         RegisteredUser user = registerEndpointUser("idemwith");
         Wallet wallet = createWalletFor(user);
+        verifyEmailFor(user);
 
         // Set PIN before financial operations
         setPin(user.token());
@@ -202,6 +210,7 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
         RegisteredUser receiver = registerEndpointUser("idemrecv");
         Wallet senderWallet = createWalletFor(sender);
         Wallet receiverWallet = createWalletFor(receiver);
+        verifyEmailFor(sender);
 
         // Set PIN for sender
         setPin(sender.token());
@@ -261,11 +270,12 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
                         .content(requestBody))
                 .andExpect(status().isCreated());
 
-        // Manually backdate the expires_at so the key appears expired
+        // Manually backdate the expires_at so the key appears expired.
+        // Keys are stored scoped ("<userId>:<key>"), so match on the suffix.
         transactionTemplate.executeWithoutResult(status -> {
             entityManager.createNativeQuery(
-                            "UPDATE idempotency_keys SET expires_at = '2020-01-01T00:00:00' WHERE idempotency_key = :key")
-                    .setParameter("key", key)
+                            "UPDATE idempotency_keys SET expires_at = '2020-01-01T00:00:00' WHERE idempotency_key LIKE :keyPattern")
+                    .setParameter("keyPattern", "%" + key)
                     .executeUpdate();
         });
 
@@ -282,5 +292,47 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.type").value("DEPOSIT"))
                 .andExpect(jsonPath("$.data.amount").value(25.00));
+    }
+
+    @Test
+    @DisplayName("I8: Two different users can reuse the same Idempotency-Key without collision")
+    void sameKey_differentUsers_shouldNotCollide() throws Exception {
+        RegisteredUser userA = registerEndpointUser("idemuserA");
+        RegisteredUser userB = registerEndpointUser("idemuserB");
+        Wallet walletA = createWalletFor(userA);
+        Wallet walletB = createWalletFor(userB);
+        String sharedKey = "shared-idempotency-key";
+
+        String requestBody = """
+                {"amount": 40.00, "description": "Per-user scoped key"}
+                """;
+
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", walletA.getId())
+                        .header("Authorization", "Bearer " + userA.token())
+                        .header("Idempotency-Key", sharedKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.type").value("DEPOSIT"));
+
+        // The same raw key from a DIFFERENT user must be processed
+        // independently – not served user A's cached response.
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", walletB.getId())
+                        .header("Authorization", "Bearer " + userB.token())
+                        .header("Idempotency-Key", sharedKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.data.amount").value(40.00));
+
+        // Each user owns their own scoped row ("<userId>:<key>") – two rows,
+        // proving no cross-user collision occurred.
+        long rowsForKey = idempotencyKeyRepository.findAll().stream()
+                .filter(ik -> ik.getIdempotencyKey().endsWith(sharedKey))
+                .count();
+        Assertions.assertEquals(2, rowsForKey, "Each user should own a separate scoped key row");
     }
 }

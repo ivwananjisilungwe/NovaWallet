@@ -1,7 +1,6 @@
 package com.novawallet.novawallet_api.idempotency.filter;
 
 import com.novawallet.novawallet_api.idempotency.entity.IdempotencyKey;
-import com.novawallet.novawallet_api.idempotency.entity.IdempotencyStatus;
 import com.novawallet.novawallet_api.idempotency.service.IdempotencyService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -10,6 +9,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingResponseWrapper;
@@ -29,6 +31,12 @@ import java.util.UUID;
  *   <li><b>Skip</b> – Non-mutating methods (GET, HEAD, OPTIONS, TRACE) and
  *       requests without the {@code Idempotency-Key} header pass through
  *       unmodified.</li>
+ *   <li><b>Scope</b> – The authenticated user is resolved from the security
+ *       context (this filter runs after {@code JwtAuthFilter}, see
+ *       {@code SecurityConfig}) and the raw key is scoped to
+ *       {@code "<userId>:<key>"} via {@link IdempotencyService#scopedKey}.
+ *       Unauthenticated requests keep the raw key so public endpoints retain
+ *       global dedup.</li>
  *   <li><b>Acquire</b> – The filter atomically inserts a PROCESSING row via
  *       {@link IdempotencyService#tryAcquire}. If the insert succeeds, this
  *       request "owns" the key.</li>
@@ -43,19 +51,20 @@ import java.util.UUID;
  * </ol>
  *
  * <h3>Thread safety</h3>
- * The database unique constraint on {@code idempotency_key} combined with
- * {@code REQUIRES_NEW} propagation provides safe concurrency across any number
- * of application instances.
+ * The database unique constraint on the stored (scoped) idempotency key value
+ * combined with {@code REQUIRES_NEW} propagation provides safe concurrency
+ * across any number of application instances.
  *
  * <h3>Error handling</h3>
  * If the owning request fails (non-2xx), the PROCESSING record is deleted so
  * the caller can retry with the same key. If the replay poll times out, a
- * 409 Conflict is returned.
+ * 409 Conflict is returned. Keys longer than {@value #MAX_KEY_LENGTH} chars are
+ * rejected with 400 so the scoped value always fits the VARCHAR(255) column.
  *
  * <h3>Endpoint scope</h3>
  * All mutating endpoints implicitly support idempotency. Clients opt in by
  * sending the header. Public endpoints (auth/register, etc.) are also covered
- * – useful for future webhook deduplication (I5).
+ * with global (unscoped) keys – useful for future webhook deduplication (I5).
  */
 @Component
 public class IdempotencyFilter extends OncePerRequestFilter {
@@ -68,6 +77,12 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             HttpMethod.OPTIONS.name(),
             HttpMethod.TRACE.name()
     );
+    /**
+     * Upper bound for the raw client-supplied key. The stored value is
+     * {@code <36-char uuid>:<key>} and must fit VARCHAR(255); 200 leaves ample
+     * headroom while keeping oversized keys from failing as confusing 409s.
+     */
+    private static final int MAX_KEY_LENGTH = 200;
     private static final int MAX_POLL_ATTEMPTS = 10;
     private static final long POLL_INTERVAL_MS = 100;
 
@@ -95,25 +110,26 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             return;
         }
 
-        // ---- Step 3: Extract user if available ----
-        UUID userId = null;
-        if (request.getUserPrincipal() != null) {
-            try {
-                // The user principal name is the email (set by JwtAuthFilter).
-                // We store userId only if it can be parsed from a custom attribute.
-                // For simplicity, userId is optional.
-                Object principal = request.getUserPrincipal();
-                if (principal instanceof org.springframework.security.core.userdetails.UserDetails ud) {
-                    // Could extract from username if it's a UUID, but skip for now
-                }
-            } catch (Exception e) {
-                // Ignore – userId is not critical
-            }
+        // Oversized keys would overflow the VARCHAR(255) column once scoped
+        // with the user id prefix – reject them explicitly instead of failing
+        // later as a misleading 409.
+        if (idempotencyKey.length() > MAX_KEY_LENGTH) {
+            log.warn("Rejecting oversized Idempotency-Key header ({} chars)", idempotencyKey.length());
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.setContentType("application/json");
+            response.getWriter().write("""
+                    {"success":false,"message":"Idempotency-Key must be at most %d characters.","code":"IDEMPOTENCY_KEY_TOO_LONG"}
+                    """.formatted(MAX_KEY_LENGTH));
+            return;
         }
+
+        // ---- Step 3: Resolve the authenticated user and scope the key ----
+        UUID userId = resolveAuthenticatedUserId();
+        String scopedKey = IdempotencyService.scopedKey(userId, idempotencyKey);
 
         // ---- Step 4: Try to acquire the key (atomic insert) ----
         boolean acquired = idempotencyService.tryAcquire(
-                idempotencyKey,
+                scopedKey,
                 request.getMethod(),
                 request.getRequestURI(),
                 userId
@@ -136,30 +152,53 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
                 // Save response only for successful (2xx) outcomes
                 if (status >= 200 && status < 300) {
-                    idempotencyService.complete(idempotencyKey, status, body);
+                    idempotencyService.complete(scopedKey, status, body);
                 } else {
                     // Non-2xx → delete the PROCESSING record so the client retries
-                    deleteProcessingRecord(idempotencyKey);
+                    deleteProcessingRecord(scopedKey);
                 }
             } catch (Exception e) {
-                deleteProcessingRecord(idempotencyKey);
+                deleteProcessingRecord(scopedKey);
                 throw e;
             }
         } else {
             // ---- Step 5b: DUPLICATE – poll for the completed record ----
-            serveCachedResponse(idempotencyKey, request, response);
+            serveCachedResponse(idempotencyKey, scopedKey, request, response);
+        }
+    }
+
+    /**
+     * Resolves the authenticated user's id from the security context. This
+     * filter is registered after {@code JwtAuthFilter} in {@code SecurityConfig},
+     * so the context is already populated for authenticated requests. The
+     * principal's username carries the user id (see
+     * {@code CustomUserDetailsService#loadUserById}). Returns null for
+     * anonymous requests, which keeps their keys globally scoped.
+     */
+    private UUID resolveAuthenticatedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof UserDetails userDetails)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(userDetails.getUsername());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
     /**
      * Polls the DB for a completed idempotency record and replays the cached
-     * response to the caller.
+     * response to the caller. Lookups use the scoped storage key; the raw key
+     * is kept for log messages.
      */
-    private void serveCachedResponse(String key,
+    private void serveCachedResponse(String rawKey,
+                                     String scopedKey,
                                      HttpServletRequest request,
                                      HttpServletResponse response) throws IOException {
         for (int attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
-            Optional<IdempotencyKey> cached = idempotencyService.getCachedResponse(key);
+            Optional<IdempotencyKey> cached = idempotencyService.getCachedResponse(scopedKey);
             if (cached.isPresent()) {
                 replay(cached.get(), response);
                 return;
@@ -175,7 +214,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         }
 
         // ---- Timeout – return 409 Conflict ----
-        log.warn("Idempotency key '{}' still PROCESSING after {} polls – returning 409", key, MAX_POLL_ATTEMPTS);
+        log.warn("Idempotency key '{}' still PROCESSING after {} polls – returning 409", rawKey, MAX_POLL_ATTEMPTS);
         response.setStatus(HttpServletResponse.SC_CONFLICT);
         response.setContentType("application/json");
         response.getWriter().write("""
@@ -197,14 +236,15 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Removes the PROCESSING record so the client can retry with the same key.
+     * Removes the PROCESSING record (looked up by scoped storage key) so the
+     * client can retry with the same key.
      */
-    private void deleteProcessingRecord(String key) {
+    private void deleteProcessingRecord(String scopedKey) {
         try {
-            idempotencyService.deleteProcessing(key);
-            log.debug("Deleted PROCESSING record for key '{}' after non-2xx response", key);
+            idempotencyService.deleteProcessing(scopedKey);
+            log.debug("Deleted PROCESSING record for key '{}' after non-2xx response", scopedKey);
         } catch (Exception e) {
-            log.warn("Failed to clean up PROCESSING record for key '{}'", key, e);
+            log.warn("Failed to clean up PROCESSING record for key '{}'", scopedKey, e);
         }
     }
 }

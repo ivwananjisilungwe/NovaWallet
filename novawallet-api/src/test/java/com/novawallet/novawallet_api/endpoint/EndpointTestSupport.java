@@ -68,6 +68,17 @@ abstract class EndpointTestSupport extends BaseAuthIntegrationTest {
         return new RegisteredUser(userId, email, phone, token);
     }
 
+    /**
+     * Marks the user's email as verified so money-out endpoints
+     * (withdraw/transfer) gated by {@code requireVerifiedEmail} succeed.
+     */
+    protected void verifyEmailFor(RegisteredUser user) {
+        User userEntity = endpointUserRepository.findById(user.userId())
+                .orElseThrow(() -> new IllegalStateException("Registered user not found"));
+        userEntity.setEmailVerified(true);
+        endpointUserRepository.save(userEntity);
+    }
+
     protected String adminToken() {
         User admin = endpointUserRepository.findByEmail("admin@novawallet.com")
                 .orElseThrow(() -> new IllegalStateException("Default admin user was not initialized"));

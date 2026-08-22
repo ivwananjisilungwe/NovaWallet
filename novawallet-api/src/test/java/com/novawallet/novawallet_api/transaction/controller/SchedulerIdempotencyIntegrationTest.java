@@ -1,6 +1,11 @@
 package com.novawallet.novawallet_api.transaction.controller;
 
 import com.novawallet.novawallet_api.auth.controller.BaseAuthIntegrationTest;
+import com.novawallet.novawallet_api.idempotency.entity.IdempotencyKey;
+import com.novawallet.novawallet_api.idempotency.entity.IdempotencyStatus;
+import com.novawallet.novawallet_api.idempotency.repository.IdempotencyKeyRepository;
+import com.novawallet.novawallet_api.idempotency.schedule.IdempotencyCleanupJob;
+import com.novawallet.novawallet_api.idempotency.service.IdempotencyService;
 import com.novawallet.novawallet_api.transaction.entity.Transaction;
 import com.novawallet.novawallet_api.transaction.enums.TransactionStatus;
 import com.novawallet.novawallet_api.transaction.enums.TransactionType;
@@ -23,6 +28,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,6 +54,12 @@ class SchedulerIdempotencyIntegrationTest extends BaseAuthIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private IdempotencyKeyRepository idempotencyKeyRepository;
+
+    @Autowired
+    private IdempotencyCleanupJob idempotencyCleanupJob;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -130,5 +142,54 @@ class SchedulerIdempotencyIntegrationTest extends BaseAuthIntegrationTest {
         assertThat(recent.getStatus())
                 .as("Recent PENDING transaction should not be affected by cleanup")
                 .isEqualTo(TransactionStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("IdempotencyCleanupJob: running twice purges per-user scoped keys exactly once")
+    void idempotencyCleanupJob_shouldBeIdempotentWithPerUserScopedKeys() {
+        // Two different users reusing the SAME raw key produce two distinct
+        // scoped storage rows ("<userId>:<key>") – both expired.
+        UUID userA = UUID.randomUUID();
+        UUID userB = UUID.randomUUID();
+        String rawKey = "sched-shared-idempotency-key";
+        LocalDateTime created = LocalDateTime.now().minusHours(48);
+
+        for (UUID userId : List.of(userA, userB)) {
+            idempotencyKeyRepository.saveAndFlush(IdempotencyKey.builder()
+                    .idempotencyKey(IdempotencyService.scopedKey(userId, rawKey))
+                    .method("POST")
+                    .endpoint("/api/v1/wallets/deposit")
+                    .userId(userId)
+                    .status(IdempotencyStatus.COMPLETED)
+                    .responseStatus(201)
+                    .responseBody("{\"success\":true}")
+                    .createdAt(created)
+                    .expiresAt(created.plusHours(24))
+                    .build());
+        }
+
+        long seeded = idempotencyKeyRepository.findAll().stream()
+                .filter(ik -> ik.getIdempotencyKey().endsWith(rawKey))
+                .count();
+        assertThat(seeded).as("Both per-user scoped rows should be seeded").isEqualTo(2);
+
+        // First run – deletes both expired scoped rows
+        idempotencyCleanupJob.cleanExpiredRecords();
+        long afterFirstRun = idempotencyKeyRepository.findAll().stream()
+                .filter(ik -> ik.getIdempotencyKey().endsWith(rawKey))
+                .count();
+
+        // Second run – nothing left to delete, state unchanged
+        idempotencyCleanupJob.cleanExpiredRecords();
+        long afterSecondRun = idempotencyKeyRepository.findAll().stream()
+                .filter(ik -> ik.getIdempotencyKey().endsWith(rawKey))
+                .count();
+
+        assertThat(afterFirstRun)
+                .as("First cleanup run should delete both expired per-user scoped keys")
+                .isZero();
+        assertThat(afterSecondRun)
+                .as("Second cleanup run should be a no-op")
+                .isZero();
     }
 }

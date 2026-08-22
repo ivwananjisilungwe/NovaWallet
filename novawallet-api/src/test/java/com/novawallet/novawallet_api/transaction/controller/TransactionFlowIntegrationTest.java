@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
 import com.novawallet.novawallet_api.common.dto.PagedResponse;
 import com.novawallet.novawallet_api.transaction.dto.TransactionResponse;
+import com.novawallet.novawallet_api.user.entity.User;
+import com.novawallet.novawallet_api.user.repository.UserRepository;
 import com.novawallet.novawallet_api.wallet.dto.WalletResponse;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
 import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
@@ -29,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles({"dev", "test"})
 class TransactionFlowIntegrationTest {
 
     @Autowired
@@ -40,6 +42,9 @@ class TransactionFlowIntegrationTest {
 
     @Autowired
     private WalletRepository walletRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private static int counter = 0;
 
@@ -60,6 +65,7 @@ class TransactionFlowIntegrationTest {
         user1Email = "tx.user1." + counter + "@example.com";
         String user1Phone = "+26097100" + String.format("%04d", counter);
         user1Token = registerAndGetToken(user1Email, user1Phone);
+        markEmailVerified(extractUserId(user1Token));
 
         // Create wallet for user1 directly (bypass KYC for testing)
         Wallet wallet1 = Wallet.builder()
@@ -76,6 +82,7 @@ class TransactionFlowIntegrationTest {
         user2Email = "tx.user2." + counter + "@example.com";
         String user2Phone = "+26097200" + String.format("%04d", counter);
         user2Token = registerAndGetToken(user2Email, user2Phone);
+        markEmailVerified(extractUserId(user2Token));
 
         // Create wallet for user2
         Wallet wallet2 = Wallet.builder()
@@ -245,6 +252,13 @@ class TransactionFlowIntegrationTest {
     }
 
     // ==================== Helpers ====================
+
+    private void markEmailVerified(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("Registered user not found: " + userId));
+        user.setEmailVerified(true);
+        userRepository.save(user);
+    }
 
     private String registerAndGetToken(String email, String phone) throws Exception {
         String registerJson = """
