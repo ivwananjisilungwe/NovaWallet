@@ -7,8 +7,6 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../theme/nova_colors.dart';
-
 /// A shimmer-based skeleton loader for content placeholders.
 class SkeletonLoader extends StatefulWidget {
   const SkeletonLoader({
@@ -26,10 +24,12 @@ class SkeletonLoader extends StatefulWidget {
   /// Whether the shimmer animation is active.
   final bool enabled;
 
-  /// Base color of the skeleton (default: surfaceContainerHighest).
+  /// Base color of the skeleton
+  /// (default: [ColorScheme.surfaceContainerHighest]).
   final Color? baseColor;
 
-  /// Highlight color of the shimmer (default: surfaceContainerHigh).
+  /// Highlight color of the shimmer
+  /// (default: [ColorScheme.surfaceContainerHigh]).
   final Color? highlightColor;
 
   /// Duration of one shimmer cycle.
@@ -46,10 +46,8 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.period,
-      vsync: this,
-    )..repeat();
+    _controller = AnimationController(duration: widget.period, vsync: this)
+      ..repeat();
   }
 
   @override
@@ -64,9 +62,12 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
       return widget.child;
     }
 
-    final baseColor = widget.baseColor ?? NovaColors.surfaceContainerHighest;
-    final highlightColor =
-        widget.highlightColor ?? NovaColors.surfaceContainerHigh;
+    // Theme-driven defaults: light mode resolves to the canonical slate-tinted
+    // placeholders, dark mode to the elevated dark container tiers so the
+    // shimmer sweep stays visible against dark surfaces.
+    final scheme = Theme.of(context).colorScheme;
+    final baseColor = widget.baseColor ?? scheme.surfaceContainerHighest;
+    final highlightColor = widget.highlightColor ?? scheme.surfaceContainerHigh;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -77,11 +78,7 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
             return LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                baseColor,
-                highlightColor,
-                baseColor,
-              ],
+              colors: [baseColor, highlightColor, baseColor],
               stops: const [0.0, 0.5, 1.0],
               transform: _SlidingGradientTransform(
                 slidePercent: _controller.value,
@@ -132,7 +129,7 @@ class SkeletonRect extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: NovaColors.surfaceContainerHighest,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(borderRadius),
         ),
       ),
@@ -142,11 +139,7 @@ class SkeletonRect extends StatelessWidget {
 
 /// A circular skeleton placeholder (for avatars).
 class SkeletonCircle extends StatelessWidget {
-  const SkeletonCircle({
-    super.key,
-    this.size = 40,
-    this.enabled = true,
-  });
+  const SkeletonCircle({super.key, this.size = 40, this.enabled = true});
 
   final double size;
   final bool enabled;
@@ -159,7 +152,7 @@ class SkeletonCircle extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: NovaColors.surfaceContainerHighest,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           shape: BoxShape.circle,
         ),
       ),
@@ -191,7 +184,8 @@ class SkeletonText extends StatelessWidget {
       children: List.generate(lines, (index) {
         final isLast = index == lines - 1;
         final lineWidth = isLast && width != null
-            ? width! * 0.6 // Last line shorter
+            ? width! *
+                  0.6 // Last line shorter
             : width;
         return Padding(
           padding: EdgeInsets.only(bottom: isLast ? 0 : spacing),
@@ -213,6 +207,7 @@ class BalanceCardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -220,10 +215,7 @@ class BalanceCardSkeleton extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            NovaColors.surfaceContainerHighest,
-            NovaColors.surfaceContainerHigh,
-          ],
+          colors: [scheme.surfaceContainerHighest, scheme.surfaceContainerHigh],
         ),
       ),
       child: Column(
@@ -246,19 +238,9 @@ class BalanceCardSkeleton extends StatelessWidget {
           // Action buttons skeleton
           Row(
             children: [
-              Expanded(
-                child: SkeletonRect(
-                  height: 48,
-                  borderRadius: 16,
-                ),
-              ),
+              Expanded(child: SkeletonRect(height: 48, borderRadius: 16)),
               const SizedBox(width: 12),
-              Expanded(
-                child: SkeletonRect(
-                  height: 48,
-                  borderRadius: 16,
-                ),
-              ),
+              Expanded(child: SkeletonRect(height: 48, borderRadius: 16)),
             ],
           ),
         ],
@@ -297,10 +279,7 @@ class QuickActionsSkeleton extends StatelessWidget {
 
 /// Transaction list skeleton.
 class TransactionListSkeleton extends StatelessWidget {
-  const TransactionListSkeleton({
-    super.key,
-    this.itemCount = 5,
-  });
+  const TransactionListSkeleton({super.key, this.itemCount = 5});
 
   final int itemCount;
 

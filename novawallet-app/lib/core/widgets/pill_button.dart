@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/nova_colors.dart';
 import '../theme/design_tokens.dart';
 
 /// Pill-shaped button matching DESIGN.md primary buttons.
 ///
 /// Variants:
-/// - **filled** (default): solid indigo background, white label.
+/// - **filled** (default): solid indigo background, label in [ColorScheme.onPrimary].
 /// - **outlined**: ghost style with indigo border and text.
 /// - **text**: label-only, no background or border.
+///
+/// All colors are read from [Theme.of].colorScheme so both themes render
+/// correctly: in dark mode the indigo accents lighten ([ColorScheme.primary])
+/// while filled backgrounds invert their ink ([ColorScheme.onPrimary]).
 ///
 /// Accessibility:
 /// - Minimum touch target 56×56 dp (exceeds 48 dp WCAG AA).
@@ -41,7 +44,7 @@ class PillButton extends StatefulWidget {
   /// Fill the available horizontal space.
   final bool expanded;
 
-  /// Tint the button with [NovaColors.error] instead of the primary color.
+  /// Tint the button with [ColorScheme.error] instead of the primary color.
   final bool errorColor;
 
   /// Override for screen-reader label (defaults to [label]).
@@ -51,7 +54,8 @@ class PillButton extends StatefulWidget {
   State<PillButton> createState() => _PillButtonState();
 }
 
-class _PillButtonState extends State<PillButton> with SingleTickerProviderStateMixin {
+class _PillButtonState extends State<PillButton>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _scaleController;
   late final Animation<double> _scaleAnimation;
   bool _isPressed = false;
@@ -63,14 +67,13 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
       duration: const Duration(milliseconds: 100),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.95,
-    ).animate(CurvedAnimation(
-      parent: _scaleController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeOutCubic,
-    ));
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(
+        parent: _scaleController,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeOutCubic,
+      ),
+    );
   }
 
   @override
@@ -112,12 +115,24 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
     final effectiveLabel = widget.semanticsLabel ?? widget.label;
     final isDisabled = widget.onPressed == null || widget.loading;
 
+    // Theme-driven roles: light mode resolves to the canonical palette,
+    // dark mode to the tone-inverted accents (see AppTheme).
+    final scheme = Theme.of(context).colorScheme;
+    final accent = widget.errorColor ? scheme.error : scheme.primary;
+    // Filled buttons invert their ink against the accent; ghost variants
+    // paint the accent directly as their ink.
+    final foregroundColor = switch (widget.variant) {
+      PillButtonVariant.filled =>
+        widget.errorColor ? scheme.onError : scheme.onPrimary,
+      _ => accent,
+    };
+
     final child = AnimatedBuilder(
       animation: _scaleAnimation,
       builder: (context, _) {
         return Transform.scale(
           scale: _scaleAnimation.value,
-          child: _buildChild(context),
+          child: _buildChild(context, foregroundColor),
         );
       },
     );
@@ -131,15 +146,11 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
               : const Size(48, 48),
           padding: ComponentTokens.pillButtonPadding,
           shape: ComponentTokens.pillButtonShape,
-          backgroundColor: widget.errorColor ? NovaColors.error : NovaColors.primary,
-          foregroundColor: NovaColors.onPrimary,
-          disabledBackgroundColor: widget.errorColor
-              ? NovaColors.error.withValues(alpha: 0.38)
-              : NovaColors.primary.withValues(alpha: 0.38),
-          disabledForegroundColor: NovaColors.onPrimary.withValues(alpha: 0.38),
-          overlayColor: widget.errorColor
-              ? NovaColors.onError.withValues(alpha: 0.1)
-              : NovaColors.onPrimary.withValues(alpha: 0.1),
+          backgroundColor: accent,
+          foregroundColor: foregroundColor,
+          disabledBackgroundColor: accent.withValues(alpha: 0.38),
+          disabledForegroundColor: foregroundColor.withValues(alpha: 0.38),
+          overlayColor: foregroundColor.withValues(alpha: 0.1),
         ),
         child: child,
       ),
@@ -151,17 +162,10 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
               : const Size(48, 48),
           padding: ComponentTokens.pillButtonPadding,
           shape: ComponentTokens.pillButtonShape,
-          foregroundColor: widget.errorColor ? NovaColors.error : NovaColors.primary,
-          side: BorderSide(
-            color: widget.errorColor ? NovaColors.error : NovaColors.primary,
-            width: 1.5,
-          ),
-          disabledForegroundColor: widget.errorColor
-              ? NovaColors.error.withValues(alpha: 0.38)
-              : NovaColors.primary.withValues(alpha: 0.38),
-          overlayColor: widget.errorColor
-              ? NovaColors.error.withValues(alpha: 0.1)
-              : NovaColors.primary.withValues(alpha: 0.1),
+          foregroundColor: accent,
+          side: BorderSide(color: accent, width: 1.5),
+          disabledForegroundColor: accent.withValues(alpha: 0.38),
+          overlayColor: accent.withValues(alpha: 0.1),
         ),
         child: child,
       ),
@@ -173,13 +177,9 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
               : const Size(48, 48),
           padding: ComponentTokens.pillButtonPadding,
           shape: ComponentTokens.pillButtonShape,
-          foregroundColor: widget.errorColor ? NovaColors.error : NovaColors.primary,
-          disabledForegroundColor: widget.errorColor
-              ? NovaColors.error.withValues(alpha: 0.38)
-              : NovaColors.primary.withValues(alpha: 0.38),
-          overlayColor: widget.errorColor
-              ? NovaColors.error.withValues(alpha: 0.1)
-              : NovaColors.primary.withValues(alpha: 0.1),
+          foregroundColor: accent,
+          disabledForegroundColor: accent.withValues(alpha: 0.38),
+          overlayColor: accent.withValues(alpha: 0.1),
         ),
         child: child,
       ),
@@ -198,14 +198,17 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildChild(BuildContext context) {
+  /// Builds the button content. [foregroundColor] is the theme-resolved ink
+  /// for the active variant, so the loading spinner stays visible in both
+  /// themes (onPrimary/onError ink on filled buttons, accent ink elsewhere).
+  Widget _buildChild(BuildContext context, Color foregroundColor) {
     if (widget.loading) {
-      return const SizedBox(
+      return SizedBox(
         width: 20,
         height: 20,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(NovaColors.onPrimary),
+          valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
         ),
       );
     }
@@ -219,10 +222,7 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
           const SizedBox(width: 8),
           Text(
             widget.label,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
           ),
         ],
       );
@@ -230,10 +230,7 @@ class _PillButtonState extends State<PillButton> with SingleTickerProviderStateM
 
     return Text(
       widget.label,
-      style: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 16,
-      ),
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
     );
   }
 }

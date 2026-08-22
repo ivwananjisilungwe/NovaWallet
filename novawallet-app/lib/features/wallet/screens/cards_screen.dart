@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/theme/nova_colors.dart';
+import '../../../core/theme/design_tokens.dart';
 import '../../../core/widgets/widgets.dart';
+import '../data/cards_demo_data.dart';
 
 /// Virtual cards — Tab #3. Backend cards are V2/post-MVP, so this renders
-/// the intended experience with mock card data (per design 20).
+/// the intended experience with design-stage demo data from
+/// [demoCards] (per design 20).
 ///
 /// Horizontal gradient card carousel, quick actions (freeze / PIN / settings),
 /// recent card transactions, and an "Add a new card" CTA. Freeze state is
 /// tracked locally; all other actions surface a "coming soon" snackbar.
+///
+/// Color strategy mirrors the dashboard hero card: gradient card faces are
+/// theme-invariant brand surfaces painted from static [SemanticColors], while
+/// screen chrome (background, dots, action tiles) reads
+/// [Theme.of].colorScheme so dark mode renders correctly.
 class CardsScreen extends ConsumerStatefulWidget {
   const CardsScreen({super.key});
 
@@ -22,72 +29,14 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
   final Set<String> _frozenCardIds = {};
   int _currentIndex = 0;
 
-  static const List<_MockCard> _demoCards = [
-    _MockCard(
-      id: 'card_indigo',
-      holderName: 'CHIENGE K. MWANZA',
-      lastFour: '4242',
-      cardExpiry: '12/28',
-      brand: 'VISA',
-      startColor: NovaColors.primary,
-      endColor: NovaColors.primaryContainer,
-    ),
-    _MockCard(
-      id: 'card_purple',
-      holderName: 'CHIENGE K. MWANZA',
-      lastFour: '1892',
-      cardExpiry: '09/29',
-      brand: 'MASTERCARD',
-      startColor: Color(0xFF7C3AED),
-      endColor: Color(0xFFA855F7),
-    ),
-    _MockCard(
-      id: 'card_teal',
-      holderName: 'CHIENGE K. MWANZA',
-      lastFour: '7703',
-      cardExpiry: '04/30',
-      brand: 'VISA',
-      startColor: Color(0xFF0D9488),
-      endColor: Color(0xFF2DD4BF),
-    ),
-  ];
-
-  // Recent card transactions (mock): [title, subtitle, amountText, incoming].
-  static const List<_MockCardTransaction> _recentTransactions = [
-    _MockCardTransaction(
-      title: 'Nova Grocers',
-      subtitle: 'Card payment • Lusaka',
-      amountText: 'ZMW 245.00',
-      incoming: false,
-    ),
-    _MockCardTransaction(
-      title: 'Zamtel Airtime',
-      subtitle: 'Card top-up • Online',
-      amountText: 'ZMW 50.00',
-      incoming: false,
-    ),
-    _MockCardTransaction(
-      title: 'Nova Kiosk Refund',
-      subtitle: 'Refund • Card',
-      amountText: 'ZMW 45.50',
-      incoming: true,
-    ),
-    _MockCardTransaction(
-      title: 'Shoprite Checkers',
-      subtitle: 'Card payment • Lusaka',
-      amountText: 'ZMW 312.80',
-      incoming: false,
-    ),
-  ];
-
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
   }
 
-  _MockCard get _currentCard =>
-      _demoCards[_currentIndex.clamp(0, _demoCards.length - 1)];
+  DemoCard get _currentCard =>
+      demoCards[_currentIndex.clamp(0, demoCards.length - 1)];
 
   void _toast(String message) {
     ScaffoldMessenger.of(
@@ -95,7 +44,7 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _toggleFreeze(_MockCard card) {
+  void _toggleFreeze(DemoCard card) {
     setState(() {
       if (_frozenCardIds.contains(card.id)) {
         _frozenCardIds.remove(card.id);
@@ -109,11 +58,12 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: NovaColors.background,
+      backgroundColor: scheme.surface,
       appBar: AppBar(title: const Text('My Cards')),
       body: SafeArea(
-        child: _demoCards.isEmpty
+        child: demoCards.isEmpty
             ? EmptyStateView(
                 icon: Icons.credit_card_off_outlined,
                 title: 'No cards yet',
@@ -126,7 +76,7 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
                 children: [
                   _CardCarousel(
                     controller: _pageController,
-                    cards: _demoCards,
+                    cards: demoCards,
                     frozenCardIds: _frozenCardIds,
                     currentIndex: _currentIndex,
                     onPageChanged: (index) =>
@@ -150,7 +100,7 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
                       children: [
-                        for (final tx in _recentTransactions)
+                        for (final tx in demoCardTransactions)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: TransactionTile(
@@ -192,13 +142,14 @@ class _CardCarousel extends StatelessWidget {
   });
 
   final PageController controller;
-  final List<_MockCard> cards;
+  final List<DemoCard> cards;
   final Set<String> frozenCardIds;
   final int currentIndex;
   final ValueChanged<int> onPageChanged;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         SizedBox(
@@ -232,8 +183,8 @@ class _CardCarousel extends StatelessWidget {
                 height: 7,
                 decoration: BoxDecoration(
                   color: i == currentIndex
-                      ? NovaColors.primary
-                      : NovaColors.outlineVariant,
+                      ? scheme.primary
+                      : scheme.outlineVariant,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -254,7 +205,7 @@ class _CardActions extends StatelessWidget {
     required this.onSettings,
   });
 
-  final _MockCard card;
+  final DemoCard card;
   final bool frozen;
   final VoidCallback onFreeze;
   final VoidCallback onViewPin;
@@ -309,8 +260,9 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: NovaColors.surfaceContainerLowest,
+      color: scheme.surfaceContainerLowest,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -319,19 +271,19 @@ class _ActionButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: NovaColors.outlineVariant),
+            border: Border.all(color: scheme.outlineVariant),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 22, color: NovaColors.primary),
+              Icon(icon, size: 22, color: scheme.primary),
               const SizedBox(height: 6),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: NovaColors.onSurface,
+                  color: scheme.onSurface,
                 ),
               ),
             ],
@@ -343,10 +295,14 @@ class _ActionButton extends StatelessWidget {
 }
 
 /// Gradient payment-card face: chip, masked number, holder, expiry, brand.
+///
+/// The face is a theme-invariant brand surface (like the dashboard hero
+/// balance card), so its ink comes from static [SemanticColors] rather than
+/// the ambient [ColorScheme].
 class _GradientCard extends StatelessWidget {
   const _GradientCard({required this.card, required this.frozen});
 
-  final _MockCard card;
+  final DemoCard card;
   final bool frozen;
 
   @override
@@ -361,7 +317,7 @@ class _GradientCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: NovaColors.shadowTint.withValues(alpha: 0.22),
+            color: SemanticColors.shadowTint.withValues(alpha: 0.22),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -390,7 +346,9 @@ class _GradientCard extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                           fontStyle: FontStyle.italic,
                           letterSpacing: 2,
-                          color: NovaColors.onPrimary.withValues(alpha: 0.95),
+                          color: SemanticColors.onBrandPrimary.withValues(
+                            alpha: 0.95,
+                          ),
                         ),
                       ),
                     ],
@@ -402,7 +360,7 @@ class _GradientCard extends StatelessWidget {
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 2.2,
-                      color: NovaColors.onPrimary,
+                      color: SemanticColors.onBrandPrimary,
                     ),
                   ),
                   // Holder + expiry.
@@ -418,7 +376,7 @@ class _GradientCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 9,
                               letterSpacing: 1.2,
-                              color: NovaColors.onPrimary.withValues(
+                              color: SemanticColors.onBrandPrimary.withValues(
                                 alpha: 0.7,
                               ),
                             ),
@@ -432,7 +390,7 @@ class _GradientCard extends StatelessWidget {
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.8,
-                              color: NovaColors.onPrimary,
+                              color: SemanticColors.onBrandPrimary,
                             ),
                           ),
                         ],
@@ -445,7 +403,7 @@ class _GradientCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 9,
                               letterSpacing: 1.2,
-                              color: NovaColors.onPrimary.withValues(
+                              color: SemanticColors.onBrandPrimary.withValues(
                                 alpha: 0.7,
                               ),
                             ),
@@ -457,7 +415,7 @@ class _GradientCard extends StatelessWidget {
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 1,
-                              color: NovaColors.onPrimary,
+                              color: SemanticColors.onBrandPrimary,
                             ),
                           ),
                         ],
@@ -471,7 +429,7 @@ class _GradientCard extends StatelessWidget {
             if (frozen)
               Positioned.fill(
                 child: Container(
-                  color: NovaColors.onBackground.withValues(alpha: 0.45),
+                  color: SemanticColors.onBackground.withValues(alpha: 0.45),
                   alignment: Alignment.center,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -479,7 +437,7 @@ class _GradientCard extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: NovaColors.warning,
+                      color: SemanticColors.warning,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: const Row(
@@ -488,7 +446,7 @@ class _GradientCard extends StatelessWidget {
                         Icon(
                           Icons.lock_outline,
                           size: 14,
-                          color: NovaColors.onWarning,
+                          color: SemanticColors.onWarning,
                         ),
                         SizedBox(width: 6),
                         Text(
@@ -497,7 +455,7 @@ class _GradientCard extends StatelessWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1,
-                            color: NovaColors.onWarning,
+                            color: SemanticColors.onWarning,
                           ),
                         ),
                       ],
@@ -522,9 +480,11 @@ class _CardChip extends StatelessWidget {
       width: 40,
       height: 30,
       decoration: BoxDecoration(
-        color: const Color(0xFFE6C563),
+        color: CardsDemoArt.chipGold,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
+        border: Border.all(
+          color: SemanticColors.onBrandPrimary.withValues(alpha: 0.6),
+        ),
       ),
       child: const CustomPaint(painter: _ChipPainter()),
     );
@@ -537,7 +497,7 @@ class _ChipPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.6)
+      ..color = SemanticColors.onBrandPrimary.withValues(alpha: 0.6)
       ..strokeWidth = 1;
     final midX = size.width / 2;
     canvas.drawLine(Offset(midX, 0), Offset(midX, size.height), paint);
@@ -555,40 +515,4 @@ class _ChipPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ChipPainter oldDelegate) => false;
-}
-
-/// Mock card data shown until the backend card service ships.
-class _MockCard {
-  const _MockCard({
-    required this.id,
-    required this.holderName,
-    required this.lastFour,
-    required this.cardExpiry,
-    required this.brand,
-    required this.startColor,
-    required this.endColor,
-  });
-
-  final String id;
-  final String holderName;
-  final String lastFour;
-  final String cardExpiry;
-  final String brand;
-  final Color startColor;
-  final Color endColor;
-}
-
-/// Mock recent card transaction (post-MVP shape of a card ledger entry).
-class _MockCardTransaction {
-  const _MockCardTransaction({
-    required this.title,
-    required this.subtitle,
-    required this.amountText,
-    required this.incoming,
-  });
-
-  final String title;
-  final String subtitle;
-  final String amountText;
-  final bool incoming;
 }
