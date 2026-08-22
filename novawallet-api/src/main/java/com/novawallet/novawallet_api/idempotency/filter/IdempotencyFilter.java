@@ -83,8 +83,10 @@ public class IdempotencyFilter extends OncePerRequestFilter {
      * headroom while keeping oversized keys from failing as confusing 409s.
      */
     private static final int MAX_KEY_LENGTH = 200;
-    private static final int MAX_POLL_ATTEMPTS = 10;
-    private static final long POLL_INTERVAL_MS = 100;
+    private static final int MAX_POLL_ATTEMPTS = 8;
+    /** Initial poll delay; doubles per attempt up to {@link #MAX_POLL_DELAY_MS}. */
+    private static final long INITIAL_POLL_DELAY_MS = 25;
+    private static final long MAX_POLL_DELAY_MS = 200;
 
     private final IdempotencyService idempotencyService;
 
@@ -204,9 +206,11 @@ public class IdempotencyFilter extends OncePerRequestFilter {
                 return;
             }
 
-            // Still PROCESSING – wait and retry
+            // Still PROCESSING – back off exponentially and retry
             try {
-                Thread.sleep(POLL_INTERVAL_MS);
+                Thread.sleep(Math.min(
+                        INITIAL_POLL_DELAY_MS << (attempt - 1),
+                        MAX_POLL_DELAY_MS));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
