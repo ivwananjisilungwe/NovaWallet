@@ -7,10 +7,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-/** Seeds default admin users on startup. */
+import java.util.Arrays;
+
+/**
+ * Seeds the default admin user on startup — dev profile only.
+ *
+ * <p>Seeding is skipped unless the {@code dev} profile is active: production
+ * admins must be provisioned deliberately (e.g. via APP_ADMIN_* environment
+ * variables and an explicit bootstrap process), never auto-created at boot.
+ *
+ * <p>Credentials come exclusively from configuration/environment — they are
+ * never hard-coded here and the password is never logged.
+ */
 @Component
 public class AdminDataInitializer implements CommandLineRunner {
 
@@ -18,29 +30,39 @@ public class AdminDataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final Environment environment;
 
-    @Value("${app.admin.first-name:Admin}")
+    @Value("${app.admin.first-name}")
     private String adminFirstName;
 
-    @Value("${app.admin.last-name:User}")
+    @Value("${app.admin.last-name}")
     private String adminLastName;
 
-    @Value("${app.admin.email:admin@novawallet.com}")
+    @Value("${app.admin.email}")
     private String adminEmail;
 
-    @Value("${app.admin.password:Admin@123}")
+    @Value("${app.admin.password}")
     private String adminPassword;
 
-    @Value("${app.admin.phone:+260000000000}")
+    @Value("${app.admin.phone}")
     private String adminPhone;
 
-    public AdminDataInitializer(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AdminDataInitializer(UserRepository userRepository,
+                                PasswordEncoder passwordEncoder,
+                                Environment environment) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.environment = environment;
     }
 
     @Override
     public void run(String... args) {
+        if (!isDevProfileActive()) {
+            log.info("Admin seeding skipped — requires the 'dev' profile (active profiles: {})",
+                    Arrays.toString(environment.getActiveProfiles()));
+            return;
+        }
+
         if (adminAlreadyExists()) {
             log.info("Admin user already exists — skipping creation");
             return;
@@ -58,12 +80,17 @@ public class AdminDataInitializer implements CommandLineRunner {
 
         userRepository.save(admin);
 
+        // Never log the admin password — it is supplied via configuration only.
         log.info("============================================================");
-        log.info("  DEFAULT ADMIN CREATED");
-        log.info("  Email:    {}", adminEmail);
-        log.info("  Password: {}", adminPassword);
-        log.info("  Role:     ADMIN");
+        log.info("  ADMIN USER SEEDED");
+        log.info("  Email: {}", adminEmail);
+        log.info("  Role:  ADMIN");
+        log.info("  Password: <not logged — set via APP_ADMIN_PASSWORD>");
         log.info("============================================================");
+    }
+
+    private boolean isDevProfileActive() {
+        return Arrays.asList(environment.getActiveProfiles()).contains("dev");
     }
 
     private boolean adminAlreadyExists() {

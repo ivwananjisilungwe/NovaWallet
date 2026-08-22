@@ -44,7 +44,9 @@ info:
 
 
 jwt:
-  secret: ${JWT_SECRET:ZGV2LXNlY3JldC1rZXktdGhhdC1pcy1hdC1sZWFzdC0yNTYtYml0cy1sb25nLWZvci1oczI1Ng==}
+  # No default secret — JWT_SECRET must be supplied via environment variable.
+  # A convenience value for local development only lives in application-dev.yml.
+  secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:900000}
 
 
@@ -53,7 +55,9 @@ app:
     first-name: ${APP_ADMIN_FIRST_NAME:Admin}
     last-name: ${APP_ADMIN_LAST_NAME:User}
     email: ${APP_ADMIN_EMAIL:admin@novawallet.com}
-    password: ${APP_ADMIN_PASSWORD:Admin@123}
+    # No default password — APP_ADMIN_PASSWORD must be supplied via environment
+    # variable (or by a non-production profile file). Never hard-code it here.
+    password: ${APP_ADMIN_PASSWORD}
     phone: ${APP_ADMIN_PHONE:+260000000000}
 
   mail:

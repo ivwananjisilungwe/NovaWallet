@@ -11,7 +11,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+// "dev" must stay active: it supplies the dev-only jwt/admin credential
+// defaults and enables AdminDataInitializer (dev-profile gated).
+// "test" is listed last so test datasource/config wins over dev's.
+@ActiveProfiles({"dev", "test"})
 public abstract class BaseAuthIntegrationTest {
 
     @Autowired

@@ -87,7 +87,9 @@ app:
     first-name: ${APP_ADMIN_FIRST_NAME:Admin}
     last-name: ${APP_ADMIN_LAST_NAME:User}
     email: ${APP_ADMIN_EMAIL:admin@novawallet.com}
-    # Required — fail fast: the app must not boot with a known default admin password
+    # Required — fail fast: the app must not boot with a known default admin password.
+    # Note: automatic admin seeding runs ONLY under the dev profile; in production
+    # this password is used for deliberate, operator-driven admin provisioning.
     password: ${APP_ADMIN_PASSWORD}
     phone: ${APP_ADMIN_PHONE:+260000000000}
 
