@@ -442,8 +442,8 @@ Every request to NovaWallet goes through this exact pipeline:
 ### 8.3 JWT Signing
 
 - Algorithm: HMAC-SHA256
-- Secret: configured via `app.jwt.secret` (currently hardcoded in `application.yml`)
-- Dev default: `"404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"` (64-char hex string)
+- Secret: supplied exclusively via the `JWT_SECRET` environment variable (bound to `app.jwt.secret` / `jwt.secret`). No default exists in any profile; the application fails fast if it is missing.
+- Generate a value with: `openssl rand -base64 64`
 
 ---
 
@@ -472,7 +472,7 @@ All security-related configuration from `src/main/resources/application.yml`:
 ```yaml
 app:
   jwt:
-    secret: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
+    secret: ${JWT_SECRET}   # required; no default in any profile
     expiration-ms: 900000  # 15 minutes
 
   mail:
@@ -507,7 +507,7 @@ These are deferred until pre-launch hardening:
 | # | Gap | Impact | Effort to Fix |
 |---|---|---|---|
 | 1 | **HTTPS** | Passwords travel in plaintext over the network | Low (Let's Encrypt) |
-| 2 | **JWT secret in env var** | Secret hardcoded in repo | Low (one-line change) |
+| 2 | **JWT secret in env var** | Resolved — `JWT_SECRET` is required in every profile; no default remains | Done |
 | 3 | **CORS** | No frontend domain restriction | Low (one config block) |
 | 4 | **SMTP config** | Emails only log to console | Medium (SMTP credentials) |
 | 5 | **CSRF protection** | Disabled (OK for mobile, risky for browser) | Low (re-enable with token) |

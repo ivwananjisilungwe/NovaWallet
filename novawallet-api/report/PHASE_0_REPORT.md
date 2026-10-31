@@ -189,7 +189,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/novawallet
     username: postgres
-    password: 8407
+    password: ${SPRING_DATASOURCE_PASSWORD}   # required; no default
 
   jpa:
     hibernate:

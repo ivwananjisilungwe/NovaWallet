@@ -58,8 +58,16 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: Secret scan (high-confidence patterns)
+        run: |
+          if grep -RIlE 'BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY|AKIA[0-9A-Z]{16}|https?://[^[:space:]]+:[^[:space:]]+@' --exclude-dir=target --exclude-dir=.git . ; then
+            echo "Potential secret detected; failing build."
+            exit 1
+          fi
+        working-directory: novawallet-api
+
       - name: Run tests
-        run: mvn test -B
+        run: ./mvnw test -B
         working-directory: novawallet-api
 
       - name: Upload test results (on failure)

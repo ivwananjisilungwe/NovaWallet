@@ -3,7 +3,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/novawallet
     username: postgres
-    password: ${SPRING_DATASOURCE_PASSWORD:8407}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
 
@@ -27,14 +27,14 @@ logging:
   level:
     org.hibernate.SQL: DEBUG
 
-# ── DEV-ONLY CREDENTIAL DEFAULTS ─────────────────────────────────────────────
-# These fallbacks exist ONLY so the app boots locally without env vars.
-# They are throwaway development values — NEVER use them in any shared or
-# production environment. Production requires real secrets via environment
-# variables (see application-prod.yml, which has no fallbacks).
+# ── DEV CREDENTIALS (no insecure fallbacks) ────────────────────────────────
+# All secrets must be supplied via environment variables (see
+# novawallet-api/.env.example). There are no insecure defaults in any profile;
+# the application fails fast if a required secret is missing. Never commit
+# real values here.
 jwt:
-  secret: ${JWT_SECRET:ZGV2LXNlY3JldC1rZXktdGhhdC1pcy1hdC1sZWFzdC0yNTYtYml0cy1sb25nLWZvci1oczI1Ng==}
+  secret: ${JWT_SECRET}
 
 app:
   admin:
-    password: ${APP_ADMIN_PASSWORD:Admin@123}
+    password: ${APP_ADMIN_PASSWORD}

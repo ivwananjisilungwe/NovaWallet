@@ -1,40 +1,59 @@
-# ── Build artifacts ────────────────────────────────────────────────
+# Build artifacts
 target/
 *.class
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
 
-# ── IDE / editor ───────────────────────────────────────────────────
+# Flutter ephemeral files
+**/ios/Flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+flutter_native_integration.env
+
+# IDE and editor
 .idea/
 *.iml
 .vscode/
 .DS_Store
 
-# ── Tooling state & caches (regenerable) ───────────────────────────
+# Tooling state and caches
+.gradle/
 .codegraph/
 .omo/
 .opencode/
+.serena/
 node_modules/
 .claude/
 .playwright-mcp/
 
-# ── Generated knowledge graphs (regenerable) ───────────────────────
+# Generated knowledge graphs
 graphify-out/
 
-# ── Design tool exports (duplicate of .planning/prompts/) ──────────
-stitch_duplicate_of_novawallet/
-
-# ── Session transcripts ────────────────────────────────────────────
+# Session transcripts
 session-ses_*.md
 
-# ── Runtime data & user uploads (PII — never commit) ───────────────
+# Runtime data and user uploads
 uploads/
 
-# ── Logs ───────────────────────────────────────────────────────────
+# Logs
 *.log
 
-# ── Local environment files ────────────────────────────────────────
+# Local environment files
 .env
 .env.*
 !.env.example
 
-# ── OS ─────────────────────────────────────────────────────────────
+# Signing files and private credentials
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+
+# Operating system
 Thumbs.db
+
+# Flutter ephemeral (all platforms)
+**/flutter/ephemeral/
