@@ -12,9 +12,10 @@
 # Environment variables for the API service:
 #   Required:
 #     DATABASE_URL      — jdbc:postgresql://db:5432/novawallet
-#     DATABASE_USERNAME — postgres
+#     DATABASE_USERNAME — novawallet
 #     DATABASE_PASSWORD — your-secure-password
 #     JWT_SECRET        — base64-encoded 256+ bit secret
+#     APP_ADMIN_PASSWORD — required by the prod profile even when seeding is skipped
 #
 #   Optional:
 #     APP_MAIL_FROM     — noreply@novawallet.com
@@ -39,8 +40,8 @@ services:
       # Required — fail fast (no known default in production)
       DATABASE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
 
-      # JWT
-      JWT_SECRET: ${JWT_SECRET}
+      # JWT — must be valid base64 (JwtUtil decodes it at startup); fail fast
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (base64, 256+ bits)}
 
       # Mail (Mailpit for dev, real SMTP in production)
       SPRING_MAIL_HOST: mailpit
@@ -69,7 +70,7 @@ services:
       - kyc-uploads:/app/uploads
 
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 5s
       retries: 5

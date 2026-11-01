@@ -34,16 +34,7 @@
                 <message>message</message>
                 <mdc>mdc</mdc>
             </fieldNames>
-            <provider>
-                <provider class="net.logstash.logback.composite.loggingevent.LoggingEventPatternJsonProvider">
-                    <pattern>
-                        {
-                            "app": "${appName}",
-                            "environment": "production"
-                        }
-                    </pattern>
-                </provider>
-            </provider>
+            <customFields>{"app":"${appName}","environment":"production"}</customFields>
         </encoder>
     </appender>
 
