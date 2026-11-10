@@ -1,0 +1,141 @@
+spring:
+  application:
+    name: novawallet-api
+
+  profiles:
+    active: dev
+
+  jpa:
+    open-in-view: false
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+  # Mail is not configured in dev mode — emails are logged to console
+  # For production, set these via environment variables:
+  #   SPRING_MAIL_HOST=smtp.sendgrid.net
+  #   SPRING_MAIL_PORT=587
+  #   SPRING_MAIL_USERNAME=apikey
+  #   SPRING_MAIL_PASSWORD=<sendgrid-api-key>
+  #   spring.mail.properties.mail.smtp.auth=true
+  #   spring.mail.properties.mail.smtp.starttls.enable=true
+
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+
+  info:
+    env:
+      enabled: true
+
+
+info:
+  app:
+    name: NovaWallet API
+    description: Digital wallet backend system
+    version: 0.0.1
+
+
+jwt:
+  # No default secret — JWT_SECRET must be supplied via environment variable.
+  # A convenience value for local development only lives in application-dev.yml.
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:900000}
+
+
+app:
+  admin:
+    first-name: ${APP_ADMIN_FIRST_NAME:Admin}
+    last-name: ${APP_ADMIN_LAST_NAME:User}
+    email: ${APP_ADMIN_EMAIL:admin@novawallet.com}
+    # No default password — APP_ADMIN_PASSWORD must be supplied via environment
+    # variable (or by a non-production profile file). Never hard-code it here.
+    password: ${APP_ADMIN_PASSWORD}
+    phone: ${APP_ADMIN_PHONE:+260000000000}
+
+  mail:
+    from: ${APP_MAIL_FROM:noreply@novawallet.com}
+
+  rate-limit:
+    login:
+      max-attempts: 5
+      lockout-minutes: 15
+    global:
+      max-requests: 100
+      auth-max-requests: 10
+      window-seconds: 60
+
+  cors:
+    origins: ${APP_CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8100,capacitor://localhost}
+
+  sms:
+    api-key: ${APP_SMS_API_KEY:}
+
+  idempotency:
+    ttl-hours: 24
+
+  payments:
+    lipila:
+      # Lipila Zambia payment-gateway integration (mobile-money collections
+      # and disbursements). Disabled by default: the whole feature is inert
+      # until enabled=true AND real credentials are supplied.
+      # Master switch — gates outbound disbursement initiation (payouts).
+      enabled: ${LIPILA_ENABLED:false}
+      # Lipila REST base URL.
+      base-url: ${LIPILA_BASE_URL:https://api.lipila.dev/api/v1}
+      # Merchant API key sent as the x-api-key header on outbound calls.
+      api-key: ${LIPILA_API_KEY:}
+      # Shared secret verified (constant-time) on inbound webhook callbacks.
+      webhook-secret: ${LIPILA_WEBHOOK_SECRET:}
+
+  transaction:
+    velocity:
+      # Anti-abuse guardrails on money-out flows (withdraw/transfer), enforced
+      # per-user over a rolling 60-minute window and layered on top of the
+      # KYC daily-send-limit. Fees are excluded from both counters.
+      max-outgoing-count-per-hour: 10
+      max-outgoing-amount-per-hour: 50000
+
+  kyc:
+    upload-dir: uploads/kyc
+    tiers:
+      1:
+        name: Basic
+        wallet-limit: 5000
+        daily-send-limit: 2000
+        required-documents:
+          - NATIONAL_ID
+      2:
+        name: Standard
+        wallet-limit: 50000
+        daily-send-limit: 20000
+        required-documents:
+          - NATIONAL_ID
+          - SELFIE
+      3:
+        name: Advanced
+        wallet-limit: 200000
+        daily-send-limit: 100000
+        required-documents:
+          - NATIONAL_ID
+          - SELFIE
+          - PROOF_OF_ADDRESS
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{requestId}] %-5level %logger{36} - %msg%n"
+
+
+springdoc:
+  swagger-ui:
+    path: /api/swagger-ui.html
+
+  api-docs:
+    path: /api/api-docs
