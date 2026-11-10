@@ -4,7 +4,9 @@ import com.novawallet.novawallet_api.auth.controller.BaseAuthIntegrationTest;
 import com.novawallet.novawallet_api.fee.entity.FeeConfiguration;
 import com.novawallet.novawallet_api.fee.enums.FeeType;
 import com.novawallet.novawallet_api.fee.repository.FeeConfigurationRepository;
+import com.novawallet.novawallet_api.fee.service.FeeEngineService;
 import com.novawallet.novawallet_api.transaction.dto.TransferRequest;
+import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
 import com.novawallet.novawallet_api.transaction.service.TransactionService;
 import com.novawallet.novawallet_api.user.entity.Role;
 import com.novawallet.novawallet_api.user.entity.User;
@@ -34,8 +36,10 @@ class ConcurrentTransferIntegrationTest extends BaseAuthIntegrationTest {
 
     @Autowired private WalletRepository walletRepository;
     @Autowired private TransactionService transactionService;
+    @Autowired private TransactionRepository transactionRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private FeeConfigurationRepository feeConfigurationRepository;
+    @Autowired private FeeEngineService feeEngineService;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private PlatformTransactionManager transactionManager;
 
@@ -112,13 +116,16 @@ class ConcurrentTransferIntegrationTest extends BaseAuthIntegrationTest {
 
         Wallet fs = walletRepository.findById(senderWallet.getId()).orElseThrow();
         Wallet fr = walletRepository.findById(receiverWallet.getId()).orElseThrow();
+        BigDecimal fee = feeEngineService.calculateFee(FeeType.TRANSFER, amount);
+        BigDecimal expectedSender = new BigDecimal("100.00")
+                .subtract(new BigDecimal(success.get()).multiply(amount.add(fee)));
         // Balance must never go negative (invariant enforced by DB CHECK)
         assertThat(fs.getBalance()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
-        // At least 1 transfer should succeed; the exact count depends on
-        // H2's pessimistic-lock / MVCC behavior which differs from production PG
+        assertThat(fs.getBalance()).isEqualByComparingTo(expectedSender);
+        // At least 1 transfer should succeed
         assertThat(success.get()).isGreaterThanOrEqualTo(1);
-        // Sender balance must have decreased (at least one transfer went through)
-        assertThat(fs.getBalance()).isLessThan(new BigDecimal("100.00"));
+        // Receiver balance should equal successes * amount
+        assertThat(fr.getBalance()).isEqualByComparingTo(amount.multiply(new BigDecimal(success.get())));
     }
 
     @Test
@@ -184,5 +191,134 @@ class ConcurrentTransferIntegrationTest extends BaseAuthIntegrationTest {
                 .isGreaterThan(BigDecimal.ZERO);
         assertThat(t1.isAlive()).isFalse();
         assertThat(t2.isAlive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Rounds of simultaneous A->B and B->A transfers do not deadlock")
+    void symmetricRounds_shouldNotDeadlock() throws Exception {
+        // Dedicated wallets
+        User userA = userRepository.save(User.builder()
+                .email("symr-a-" + UUID.randomUUID() + "@test.com")
+                .passwordHash("encoded").firstName("SymR").lastName("A")
+                .phone("+26093" + (System.currentTimeMillis() % 100000))
+                .role(Role.USER).emailVerified(true).pinHash(passwordEncoder.encode("2468"))
+                .build());
+        User userB = userRepository.save(User.builder()
+                .email("symr-b-" + UUID.randomUUID() + "@test.com")
+                .passwordHash("encoded").firstName("SymR").lastName("B")
+                .phone("+26094" + (System.currentTimeMillis() % 100000))
+                .role(Role.USER).emailVerified(true).pinHash(passwordEncoder.encode("2468"))
+                .build());
+        Wallet walletA = walletRepository.save(Wallet.builder()
+                .userId(userA.getId())
+                .accountNumber("SYMR-A-" + UUID.randomUUID().toString().substring(0,8).toUpperCase())
+                .balance(new BigDecimal("200.00")).currency("ZMW")
+                .build());
+        Wallet walletB = walletRepository.save(Wallet.builder()
+                .userId(userB.getId())
+                .accountNumber("SYMR-B-" + UUID.randomUUID().toString().substring(0,8).toUpperCase())
+                .balance(new BigDecimal("200.00")).currency("ZMW")
+                .build());
+
+        BigDecimal amountAB = new BigDecimal("10.00");
+        BigDecimal amountBA = new BigDecimal("5.00");
+        int rounds = 3;
+        // keep within velocity limit (10 outgoing per user)
+        BigDecimal feeAB = feeEngineService.calculateFee(FeeType.TRANSFER, amountAB);
+        BigDecimal feeBA = feeEngineService.calculateFee(FeeType.TRANSFER, amountBA);
+
+        java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        for (int r = 0; r < rounds; r++) {
+            java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+            Thread t1 = new Thread(() -> {
+                try { start.await();
+                    transactionService.transfer(
+                            new TransferRequest(walletB.getId(), amountAB, "2468", "A->B"),
+                            userA.getId());
+                } catch (Exception e) { failures.incrementAndGet(); }
+            });
+            Thread t2 = new Thread(() -> {
+                try { start.await();
+                    transactionService.transfer(
+                            new TransferRequest(walletA.getId(), amountBA, "2468", "B->A"),
+                            userB.getId());
+                } catch (Exception e) { failures.incrementAndGet(); }
+            });
+            t1.start(); t2.start();
+            start.countDown();
+            t1.join(10000);
+            t2.join(10000);
+            assertThat(t1.isAlive()).isFalse();
+            assertThat(t2.isAlive()).isFalse();
+        }
+
+        Wallet wa = walletRepository.findById(walletA.getId()).orElseThrow();
+        Wallet wb = walletRepository.findById(walletB.getId()).orElseThrow();
+
+        // Exact accounting: A side = initial - sum(amountAB+feeAB) + sum(amountBA)
+        BigDecimal expectedA = new BigDecimal("200.00")
+                .subtract(amountAB.add(feeAB).multiply(new BigDecimal(rounds)))
+                .add(amountBA.multiply(new BigDecimal(rounds)));
+        BigDecimal expectedB = new BigDecimal("200.00")
+                .subtract(amountBA.add(feeBA).multiply(new BigDecimal(rounds)))
+                .add(amountAB.multiply(new BigDecimal(rounds)));
+        assertThat(wa.getBalance()).isEqualByComparingTo(expectedA);
+        assertThat(wb.getBalance()).isEqualByComparingTo(expectedB);
+        assertThat(failures.get()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("Insufficient balance transfer returns 400 and leaves balances and rows unchanged")
+    void insufficientBalance_transfer_returns400() throws Exception {
+        User userA = userRepository.save(User.builder()
+                .email("insuf-a-" + UUID.randomUUID() + "@test.com")
+                .passwordHash("encoded").firstName("Insuf").lastName("A")
+                .phone("+26095" + (System.currentTimeMillis() % 100000))
+                .role(Role.USER).emailVerified(true).pinHash(passwordEncoder.encode("2468"))
+                .build());
+        User userB = userRepository.save(User.builder()
+                .email("insuf-b-" + UUID.randomUUID() + "@test.com")
+                .passwordHash("encoded").firstName("Insuf").lastName("B")
+                .phone("+26096" + (System.currentTimeMillis() % 100000))
+                .role(Role.USER).emailVerified(true).pinHash(passwordEncoder.encode("2468"))
+                .build());
+        Wallet walletA = walletRepository.save(Wallet.builder()
+                .userId(userA.getId())
+                .accountNumber("INSUF-A-" + UUID.randomUUID().toString().substring(0,8).toUpperCase())
+                .balance(new BigDecimal("10.00")).currency("ZMW")
+                .build());
+        Wallet walletB = walletRepository.save(Wallet.builder()
+                .userId(userB.getId())
+                .accountNumber("INSUF-B-" + UUID.randomUUID().toString().substring(0,8).toUpperCase())
+                .balance(BigDecimal.ZERO.setScale(2)).currency("ZMW")
+                .build());
+
+        long beforeCount = transactionRepository.findAll().stream()
+                .filter(tx -> walletA.getId().equals(tx.getSenderWalletId())
+                        || walletA.getId().equals(tx.getReceiverWalletId())
+                        || walletB.getId().equals(tx.getSenderWalletId())
+                        || walletB.getId().equals(tx.getReceiverWalletId()))
+                .count();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                transactionService.transfer(
+                        new TransferRequest(walletB.getId(), new BigDecimal("100.00"), "2468", "insufficient"),
+                        userA.getId()))
+                .isInstanceOf(com.novawallet.novawallet_api.exception.BadRequestException.class)
+                .hasMessageContaining("Insufficient balance");
+
+        Wallet wa = walletRepository.findById(walletA.getId()).orElseThrow();
+        Wallet wb = walletRepository.findById(walletB.getId()).orElseThrow();
+        assertThat(wa.getBalance()).isEqualByComparingTo("10.00");
+        assertThat(wb.getBalance()).isEqualByComparingTo("0.00");
+
+        long afterCount = transactionRepository.findAll().stream()
+                .filter(tx -> walletA.getId().equals(tx.getSenderWalletId())
+                        || walletA.getId().equals(tx.getReceiverWalletId())
+                        || walletB.getId().equals(tx.getSenderWalletId())
+                        || walletB.getId().equals(tx.getReceiverWalletId()))
+                .count();
+        assertThat(afterCount).isEqualTo(beforeCount);
     }
 }

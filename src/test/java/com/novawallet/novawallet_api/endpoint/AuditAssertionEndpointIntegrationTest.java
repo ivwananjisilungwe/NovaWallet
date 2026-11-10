@@ -7,7 +7,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,6 +20,9 @@ class AuditAssertionEndpointIntegrationTest extends EndpointTestSupport {
 
     @Autowired
     private AuditLogRepository auditLogRepository;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @Test
     @DisplayName("AuditLog entity mapping and repository are wired correctly")
@@ -38,17 +43,26 @@ class AuditAssertionEndpointIntegrationTest extends EndpointTestSupport {
     }
 
     @Test
-    @DisplayName("Deposit triggers async audit log entry via AuditService")
-    void deposit_shouldCreateAuditLogEntry() throws Exception {
+    @DisplayName("Withdrawal triggers async audit log entry via AuditService")
+    void withdrawal_shouldCreateAuditLogEntry() throws Exception {
         RegisteredUser user = registerEndpointUser("auditdep");
         Wallet wallet = createWalletFor(user);
+        verifyEmailFor(user);
+
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(wallet.getId(), new BigDecimal("100.00")));
+
+        mockMvc.perform(post("/api/v1/pin")
+                        .header("Authorization", "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isOk());
 
         long before = auditLogRepository.count();
 
-        mockMvc.perform(post("/api/v1/wallets/" + wallet.getId() + "/deposit")
+        mockMvc.perform(post("/api/v1/wallets/" + wallet.getId() + "/withdraw")
                         .header("Authorization", "Bearer " + user.token())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":25.00,\"description\":\"Audit deposit test\"}"))
+                        .content("{\"amount\":25.00,\"pin\":\"1234\",\"description\":\"Audit withdrawal test\"}"))
                 .andExpect(status().isCreated());
 
         long deadline = System.currentTimeMillis() + 5000;
@@ -64,6 +78,6 @@ class AuditAssertionEndpointIntegrationTest extends EndpointTestSupport {
         }
 
         assertTrue(after > before,
-                "Expected audit log count " + before + " to increase after deposit. Was: " + after);
+                "Expected audit log count " + before + " to increase after withdrawal. Was: " + after);
     }
 }

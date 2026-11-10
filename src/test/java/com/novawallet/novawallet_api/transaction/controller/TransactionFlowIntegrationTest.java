@@ -21,6 +21,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -45,6 +46,9 @@ class TransactionFlowIntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     private static int counter = 0;
 
@@ -104,25 +108,12 @@ class TransactionFlowIntegrationTest {
         @Test
         void shouldCompleteDepositWithdrawAndTransfer() throws Exception {
             // =========================================
-            // 1. DEPOSIT K100
+            // 1. FUND WALLET FOR INTEGRATION TESTING
             // =========================================
-            String depositJson = """
-                    {"amount": 100.00, "description": "Cash deposit"}
-                    """;
-
-            MvcResult depositResult = mockMvc.perform(post("/api/v1/wallets/" + user1WalletId + "/deposit")
-                            .header("Authorization", "Bearer " + user1Token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(depositJson))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.success").value(true))
-                    .andExpect(jsonPath("$.data.type").value("DEPOSIT"))
-                    .andExpect(jsonPath("$.data.amount").value(100.00))
-                    .andExpect(jsonPath("$.data.balanceAfter").value(100.00))
-                    .andReturn();
-
-            String depositRef = objectMapper.readTree(depositResult.getResponse().getContentAsString())
-                    .get("data").get("reference").asText();
+            // Direct client-initiated deposits are intentionally disabled (FIN-01).
+            // Fund the wallet at the repository level so the remaining
+            // withdrawal/transfer flow can be exercised.
+            transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(user1WalletId, new BigDecimal("100.00")));
 
             // =========================================
             // 2. CHECK BALANCE
@@ -136,28 +127,7 @@ class TransactionFlowIntegrationTest {
                     .andReturn();
 
             // =========================================
-            // 3. TRANSACTION HISTORY (should have 1 deposit)
-            // =========================================
-            MvcResult historyResult = mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/transactions")
-                            .header("Authorization", "Bearer " + user1Token)
-                            .param("type", "DEPOSIT"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.success").value(true))
-                    .andExpect(jsonPath("$.data.totalElements").value(1))
-                    .andExpect(jsonPath("$.data.content[0].reference").value(depositRef))
-                    .andReturn();
-
-            // =========================================
-            // 4. SINGLE TRANSACTION LOOKUP
-            // =========================================
-            mockMvc.perform(get("/api/v1/transactions/" + depositRef)
-                            .header("Authorization", "Bearer " + user1Token))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.reference").value(depositRef))
-                    .andExpect(jsonPath("$.data.type").value("DEPOSIT"));
-
-            // =========================================
-            // 5. SET PIN (needed for withdraw/transfer)
+            // 4. SET PIN (needed for withdraw/transfer)
             // =========================================
             String setPinJson = """
                     {"pin": "1234"}
@@ -175,14 +145,31 @@ class TransactionFlowIntegrationTest {
                     {"amount": 30.00, "pin": "1234", "description": "ATM withdrawal"}
                     """;
 
-            mockMvc.perform(post("/api/v1/wallets/" + user1WalletId + "/withdraw")
+            MvcResult withdrawResult = mockMvc.perform(post("/api/v1/wallets/" + user1WalletId + "/withdraw")
                             .header("Authorization", "Bearer " + user1Token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(withdrawJson))
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.data.type").value("WITHDRAWAL"))
                     .andExpect(jsonPath("$.data.amount").value(30.00))
-                    .andExpect(jsonPath("$.data.balanceAfter").value(70.00));
+                    .andExpect(jsonPath("$.data.balanceAfter").value(70.00))
+                    .andReturn();
+
+            String withdrawReference = objectMapper.readTree(withdrawResult.getResponse().getContentAsString())
+                    .get("data").get("reference").asText();
+
+            // Single-transaction lookup for the withdrawal
+            mockMvc.perform(get("/api/v1/transactions/" + withdrawReference)
+                            .header("Authorization", "Bearer " + user1Token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.type").value("WITHDRAWAL"));
+
+            // History filter for WITHDRAWAL has exactly one entry
+            mockMvc.perform(get("/api/v1/wallets/" + user1WalletId + "/transactions")
+                            .header("Authorization", "Bearer " + user1Token)
+                            .param("type", "WITHDRAWAL"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.totalElements").value(1));
 
             // =========================================
             // 7. TRANSFER K20 to user2
@@ -234,8 +221,8 @@ class TransactionFlowIntegrationTest {
 
             ApiResponse<PagedResponse<TransactionResponse>> historyResponse = objectMapper.readValue(
                     allHistory, new TypeReference<>() {});
-            // deposit + withdraw + fee(1) + transfer_debit + transfer_credit + fee(2) = 6
-            assertThat(historyResponse.data().totalElements()).isEqualTo(6);
+            // withdraw + fee(1) + transfer_debit + transfer_credit + fee(2) = 5
+            assertThat(historyResponse.data().totalElements()).isEqualTo(5);
 
             // =========================================
             // 10. OWNERSHIP ENFORCEMENT

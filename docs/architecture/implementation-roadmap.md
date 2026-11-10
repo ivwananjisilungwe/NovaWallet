@@ -56,6 +56,39 @@
 
 ---
 
+
+## Phase 1A — Financial Guardrails (Completed and Verified)
+
+**Status:** Complete / verified. This is a scoped financial-guardrail slice of Phase 1. It does not complete the broader Phase 1 security and payout work, and no Phase 1B work was performed.
+
+**Branch:** `feature/phase-1a-financial-guardrails`
+**Baseline commit:** `60179fb`
+
+### Scope completed
+
+| Risk ID | Phase 1A disposition | Summary |
+|---|---|---|
+| FIN-01 | TEMPORARILY DISABLED | Direct deposit endpoint remains registered and preserves ownership/active checks, but `TransactionService.deposit` now throws `ServiceUnavailableException` (HTTP 503) before any balance update, transaction, audit record, or notification. No admin/public equivalent exists. |
+| FIN-02 | TEMPORARILY DISABLED | Webhook secret authentication and constant-time comparison are unchanged. `WebhookService.processCollectionCallback` validates, parses the reference, returns 200 for non-Successful statuses, normalizes the amount, looks up the wallet, then throws `ServiceUnavailableException` (HTTP 503) before crediting. The credit path and duplicate-description deduplication were removed. |
+| FIN-06 | VERIFIED | Transfer locking is canonicalized by ascending wallet UUID using `findByIdWithLock`; locked rows are mapped back to sender/receiver; sender active status is rechecked under lock; atomic debit/credit and rollback are preserved. No isolation downgrade. |
+| FIN-12 | MITIGATED | Transaction references now use DB-backed `transaction_reference_seq` via `nextval`, with range guard `1..99,999,999`. Migration V12 streams references, ignores non-conforming rows with a warning, fails closed at capacity, restarts to `max+1`, and does not rewrite historical rows. Streaming uses a nonzero fetch size, autocommit guard, and try-with-resources. **PostgreSQL 16 verified**: fresh migration, historical references, sequence initialization, malformed references, concurrent generation (8x100=800 unique, 0 duplicates), uniqueness enforcement, sequence exhaustion, and migration failure/recovery all passed. Java generator tested against PostgreSQL 16 (16x250=4000 unique, 0 duplicates, 1831ms). |
+| OPS-01 | VERIFIED | Maven Wrapper 3.3.4 script-only configuration was restored with Maven 3.9.16 and a pinned SHA-256 from the official ASF SHA-512. Clean-cache bootstrap and tampered-checksum failure were verified; `mvnw` mode is `755`; wrapper properties remain untracked by repository policy. |
+
+### Evidence
+
+- Full regression: 175 tests, 0 failures, 0 errors, 0 skipped on H2 with JDK 17 via `./mvnw clean test`.
+- Baseline before Phase 1A: 144 tests with 8 failures caused by duplicate transaction references.
+- Targeted containment/locking/migration tests passed in their respective runs.
+- No source, test, migration, POM, `.mvn`, or `.gitignore` files were modified by this documentation task.
+
+### Explicit non-goals / not performed
+
+- No Phase 1B, payment orchestration, double-entry ledger, modular-monolith, event-driven/outbox, or microservice extraction work.
+- FIN-01 and FIN-02 remain contained rather than resolved; verified collection initiation and verification are not implemented.
+- FIN-12 PostgreSQL 16 verification: PASSED. All 8 migration tests and 3 Java generator tests passed against PostgreSQL 16.15. No corrections were required.
+- Residual low security findings and out-of-scope observations are recorded in `backend-risk-register.md` §10.4.
+
+
 ## Phase 2 — Double-Entry Accounting Ledger
 
 **Objectives**

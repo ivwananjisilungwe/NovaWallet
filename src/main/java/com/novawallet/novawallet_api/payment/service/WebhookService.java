@@ -5,7 +5,6 @@ import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.exception.ServiceUnavailableException;
 import com.novawallet.novawallet_api.payment.config.PaymentConfig;
 import com.novawallet.novawallet_api.payment.dto.GatewayCallbackPayload;
-import com.novawallet.novawallet_api.transaction.dto.DepositRequest;
 import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
 import com.novawallet.novawallet_api.transaction.service.TransactionService;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
@@ -105,26 +104,14 @@ public class WebhookService {
         }
 
         BigDecimal amount = normalizeAmount(payload.amount(), payload.referenceId());
-        String description = depositDescription(payload.referenceId());
 
-        // Pessimistic lock FIRST: serializes duplicate callbacks for the same
-        // wallet so the existence check below cannot race a concurrent credit.
-        Wallet wallet = walletRepository.findByIdWithLock(walletId)
+        Wallet wallet = walletRepository.findById(walletId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Wallet not found for reference: " + payload.referenceId()));
-
-        if (transactionRepository.existsByDescription(description)) {
-            log.info("Duplicate Lipila callback ignored (already credited): reference={}",
-                    payload.referenceId());
-            return;
-        }
-
-        // Credit through the existing ledger path: KYC wallet-limit enforcement,
-        // atomic balance update, balanceBefore/After ledger row, audit + notification.
-        transactionService.deposit(walletId, new DepositRequest(amount, description), wallet.getUserId());
-
-        log.info("Lipila collection credited: reference={}, wallet={}, amount={}, providerIdentifier={}",
-                payload.referenceId(), walletId, amount, payload.identifier());
+        log.warn("Contained unverified Lipila collection callback: reference={}, wallet={}, claimedAmount={}, providerIdentifier={}",
+                payload.referenceId(), wallet.getId(), amount, payload.identifier());
+        throw new ServiceUnavailableException(
+                "Collection callbacks are temporarily disabled until verified collection initiation is implemented");
     }
 
     // ==================== Helpers ====================

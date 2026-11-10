@@ -5,6 +5,8 @@ import com.novawallet.novawallet_api.idempotency.schedule.IdempotencyCleanupJob;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,31 +42,34 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
     }
 
     @Test
-    @DisplayName("I1: Deposit with Idempotency-Key returns 201 and caches the response")
-    void deposit_withIdempotencyKey_shouldSucceed() throws Exception {
+    @DisplayName("I1: Withdrawal with Idempotency-Key returns 201 and caches the response")
+    void withdrawal_withIdempotencyKey_shouldSucceed() throws Exception {
         RegisteredUser user = registerEndpointUser("idemdep");
         Wallet wallet = createWalletFor(user);
+        verifyEmailFor(user);
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(wallet.getId(), new BigDecimal("200.00")));
+        setPin(user.token());
         String key = "idemp-deposit-1";
 
         String requestBody = """
-                {"amount": 50.00, "description": "Idempotent deposit"}
+                {"amount": 50.00, "pin": "2468", "description": "Idempotent withdrawal"}
                 """;
 
-        String firstResponse = mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        String firstResponse = mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.data.type").value("WITHDRAWAL"))
                 .andExpect(jsonPath("$.data.amount").value(50.00))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         // Second call – same key, should return the identical cached response
-        String secondResponse = mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        String secondResponse = mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -87,15 +92,18 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
 
     @Test
     @DisplayName("I2: Different Idempotency-Key produces a different transaction")
-    void deposit_withDifferentKey_shouldCreateNewTransaction() throws Exception {
+    void withdrawal_withDifferentKey_shouldCreateNewTransaction() throws Exception {
         RegisteredUser user = registerEndpointUser("idemkey2");
         Wallet wallet = createWalletFor(user);
+        verifyEmailFor(user);
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(wallet.getId(), new BigDecimal("200.00")));
+        setPin(user.token());
 
         String requestBody = """
-                {"amount": 30.00, "description": "Second idempotent deposit"}
+                {"amount": 30.00, "pin": "2468", "description": "Second idempotent withdrawal"}
                 """;
 
-        String response1 = mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        String response1 = mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .header("Idempotency-Key", "key-a")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -105,7 +113,7 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
                 .getResponse()
                 .getContentAsString();
 
-        String response2 = mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        String response2 = mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .header("Idempotency-Key", "key-b")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -120,15 +128,18 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
 
     @Test
     @DisplayName("I3: POST without Idempotency-Key behaves normally")
-    void deposit_withoutKey_shouldBehaveNormally() throws Exception {
+    void withdrawal_withoutKey_shouldBehaveNormally() throws Exception {
         RegisteredUser user = registerEndpointUser("idemnokey");
         Wallet wallet = createWalletFor(user);
+        verifyEmailFor(user);
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(wallet.getId(), new BigDecimal("200.00")));
+        setPin(user.token());
 
         String requestBody = """
-                {"amount": 10.00, "description": "No key deposit"}
+                {"amount": 10.00, "pin": "2468", "description": "No key withdrawal"}
                 """;
 
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
@@ -136,7 +147,7 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
                 .andExpect(jsonPath("$.success").value(true));
 
         // A second identical request without a key should also succeed
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
@@ -168,11 +179,7 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
         setPin(user.token());
 
         // Fund first
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
-                        .header("Authorization", "Bearer " + user.token())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\": 200.00, \"description\": \"Fund for withdrawal\"}"))
-                .andExpect(status().isCreated());
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(wallet.getId(), new BigDecimal("200.00")));
 
         String key = "idemp-withdraw-1";
         String requestBody = """
@@ -216,11 +223,7 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
         setPin(sender.token());
 
         // Fund sender
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", senderWallet.getId())
-                        .header("Authorization", "Bearer " + sender.token())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\": 100.00, \"description\": \"Fund sender\"}"))
-                .andExpect(status().isCreated());
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(senderWallet.getId(), new BigDecimal("100.00")));
 
         String key = "idemp-transfer-1";
         String transferJson = """
@@ -256,14 +259,17 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
     void expiredKey_shouldBeReusableAfterCleanup() throws Exception {
         RegisteredUser user = registerEndpointUser("idemexp");
         Wallet wallet = createWalletFor(user);
+        verifyEmailFor(user);
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(wallet.getId(), new BigDecimal("200.00")));
+        setPin(user.token());
         String key = "idemp-expired-key-1";
 
         String requestBody = """
-                {"amount": 25.00, "description": "Expired key test"}
+                {"amount": 25.00, "pin": "2468", "description": "Expired key test"}
                 """;
 
         // First use — key is acquired and completed
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -283,14 +289,14 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
         idempotencyCleanupJob.cleanExpiredRecords();
 
         // Same key should now work as a fresh transaction
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", wallet.getId())
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", wallet.getId())
                         .header("Authorization", "Bearer " + user.token())
                         .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.data.type").value("WITHDRAWAL"))
                 .andExpect(jsonPath("$.data.amount").value(25.00));
     }
 
@@ -301,31 +307,37 @@ class IdempotencyEndpointIntegrationTest extends EndpointTestSupport {
         RegisteredUser userB = registerEndpointUser("idemuserB");
         Wallet walletA = createWalletFor(userA);
         Wallet walletB = createWalletFor(userB);
+        verifyEmailFor(userA);
+        verifyEmailFor(userB);
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(walletA.getId(), new BigDecimal("200.00")));
+        transactionTemplate.executeWithoutResult(status -> walletRepository.updateBalance(walletB.getId(), new BigDecimal("200.00")));
+        setPin(userA.token());
+        setPin(userB.token());
         String sharedKey = "shared-idempotency-key";
 
         String requestBody = """
-                {"amount": 40.00, "description": "Per-user scoped key"}
+                {"amount": 40.00, "pin": "2468", "description": "Per-user scoped key"}
                 """;
 
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", walletA.getId())
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", walletA.getId())
                         .header("Authorization", "Bearer " + userA.token())
                         .header("Idempotency-Key", sharedKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.type").value("DEPOSIT"));
+                .andExpect(jsonPath("$.data.type").value("WITHDRAWAL"));
 
         // The same raw key from a DIFFERENT user must be processed
         // independently – not served user A's cached response.
-        mockMvc.perform(post("/api/v1/wallets/{walletId}/deposit", walletB.getId())
+        mockMvc.perform(post("/api/v1/wallets/{walletId}/withdraw", walletB.getId())
                         .header("Authorization", "Bearer " + userB.token())
                         .header("Idempotency-Key", sharedKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.data.type").value("WITHDRAWAL"))
                 .andExpect(jsonPath("$.data.amount").value(40.00));
 
         // Each user owns their own scoped row ("<userId>:<key>") – two rows,

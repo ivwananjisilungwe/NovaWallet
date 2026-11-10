@@ -5,6 +5,7 @@ import com.novawallet.novawallet_api.auth.service.AuthService;
 import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.exception.ForbiddenException;
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
+import com.novawallet.novawallet_api.exception.ServiceUnavailableException;
 import com.novawallet.novawallet_api.fee.enums.FeeType;
 import com.novawallet.novawallet_api.fee.service.FeeEngineService;
 import com.novawallet.novawallet_api.notification.entity.NotificationChannel;
@@ -27,6 +28,8 @@ import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,6 +67,9 @@ public class TransactionService {
     private final TransactionLimitService transactionLimitService;
     private final NotificationService notificationService;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     public TransactionService(
             WalletRepository walletRepository,
             TransactionRepository transactionRepository,
@@ -88,56 +94,12 @@ public class TransactionService {
 
     @CacheEvict(value = "walletBalances", key = "#walletId")
     public TransactionResponse deposit(UUID walletId, DepositRequest request, UUID userId) {
-        Wallet wallet = findActiveWalletWithLock(walletId, userId);
-
-        BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
-
-        // Enforce KYC wallet-limit: balance after deposit must not exceed tier limit
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        transactionLimitService.enforceDepositWalletLimit(user, amount, wallet);
-
-        BigDecimal balanceBefore = wallet.getBalance();
-
-        int updated = walletRepository.updateBalance(walletId, amount);
-        if (updated == 0) {
-            throw new IllegalStateException("Deposit failed — wallet may have been removed");
-        }
-
-        wallet = walletRepository.findById(walletId)
-                .orElseThrow(() -> new IllegalStateException("Wallet disappeared after deposit"));
-
-        BigDecimal balanceAfter = wallet.getBalance();
-
-        Transaction transaction = Transaction.builder()
-                .reference(referenceGenerator.generate())
-                .type(TransactionType.DEPOSIT)
-                .amount(amount)
-                .balanceBefore(balanceBefore)
-                .balanceAfter(balanceAfter)
-                .status(TransactionStatus.SUCCESSFUL)
-                .description(request.description())
-                .receiverWalletId(walletId)
-                .build();
-
-        transaction = transactionRepository.save(transaction);
-
-        log.info("Deposit: wallet={}, amount={}, reference={}, balance={}→{}",
-                walletId, amount, transaction.getReference(), balanceBefore, balanceAfter);
-
-        auditService.recordAction("Wallet", walletId, "DEPOSIT",
-                balanceBefore.toString(), balanceAfter.toString(), userId);
-
-        notificationService.sendBoth(
-                userId, user.getEmail(), null,
-                NotificationType.TRANSACTION_DEPOSIT,
-                "Deposit Confirmed",
-                "Your deposit of K" + amount + " has been processed. "
-                        + "Reference: " + transaction.getReference(),
-                "Deposit: K" + amount + " successful. Ref: " + transaction.getReference()
-        );
-
-        return TransactionResponse.from(transaction);
+        // Preserve wallet ownership/active-state checks, then reject. Direct
+        // client-initiated deposits are disabled until a verified collection
+        // workflow exists; no balance or transaction record is created.
+        findActiveWalletWithLock(walletId, userId);
+        throw new ServiceUnavailableException(
+                "Direct wallet deposits are unavailable until verified payment collection is implemented");
     }
 
     @CacheEvict(value = "walletBalances", key = "#walletId")
@@ -239,13 +201,39 @@ public class TransactionService {
             throw new BadRequestException("Cannot transfer to your own wallet");
         }
 
-        // Lock sender wallet first (consistent lock order to prevent deadlocks)
-        senderWallet = walletRepository.findByIdWithLock(senderWallet.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Sender wallet not found"));
+        // Detach the unlocked sender entity so the pessimistic locks below load
+        // fresh rows (avoids stale-version conflicts under concurrency).
+        if (entityManager != null) {
+            entityManager.detach(senderWallet);
+        }
 
-        // Lock receiver wallet second
-        Wallet receiverWallet = walletRepository.findByIdWithLock(receiverWalletId)
-                .orElseThrow(() -> new ResourceNotFoundException("Receiver wallet not found"));
+        // Acquire pessimistic locks in a canonical UUID order, independent of
+        // transfer direction. Locking the lower UUID first and then the higher
+        // UUID prevents opposite-direction transfers from deadlocking.
+        UUID senderWalletId = senderWallet.getId();
+        UUID firstLockId = senderWalletId.compareTo(receiverWalletId) < 0
+                ? senderWalletId : receiverWalletId;
+        UUID secondLockId = senderWalletId.compareTo(receiverWalletId) < 0
+                ? receiverWalletId : senderWalletId;
+
+        Wallet firstLockedWallet = walletRepository.findByIdWithLock(firstLockId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        firstLockId.equals(senderWalletId) ? "Sender wallet not found" : "Receiver wallet not found"));
+        Wallet secondLockedWallet = walletRepository.findByIdWithLock(secondLockId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        secondLockId.equals(senderWalletId) ? "Sender wallet not found" : "Receiver wallet not found"));
+
+        Wallet lockedSenderWallet = firstLockedWallet.getId().equals(senderWalletId)
+                ? firstLockedWallet : secondLockedWallet;
+        Wallet lockedReceiverWallet = firstLockedWallet.getId().equals(receiverWalletId)
+                ? firstLockedWallet : secondLockedWallet;
+
+        senderWallet = lockedSenderWallet;
+        Wallet receiverWallet = lockedReceiverWallet;
+
+        if (senderWallet.getStatus() != WalletStatus.ACTIVE) {
+            throw new BadRequestException("Sender wallet is not active");
+        }
 
         if (receiverWallet.getStatus() != WalletStatus.ACTIVE) {
             throw new BadRequestException("Receiver wallet is not active");

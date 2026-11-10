@@ -56,11 +56,12 @@ public class TransactionController {
     // ==================== Write operations ====================
 
     @PostMapping("/wallets/{walletId}/deposit")
-    @Operation(summary = "Deposit funds", description = "Deposit money into a wallet (increases balance)")
+    @Operation(summary = "Deposit funds", description = "Direct deposits are temporarily disabled and never credit a wallet")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Deposit successful"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Wallet does not belong to user"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Wallet not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Wallet not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "Direct deposits are temporarily disabled")
     })
     public ResponseEntity<ApiResponse<TransactionResponse>> deposit(
             @PathVariable UUID walletId,

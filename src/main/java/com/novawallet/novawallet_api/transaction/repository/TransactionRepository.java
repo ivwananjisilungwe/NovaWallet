@@ -42,6 +42,15 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
     Optional<String> findMaxReferenceByPrefix(@Param("prefix") String prefix);
 
     /**
+     * Allocates the next global transaction-reference sequence value from the
+     * database-backed {@code transaction_reference_seq}. This is safe across
+     * JVM instances and concurrent requests; callers must still rely on the
+     * database unique constraint on {@code transactions.reference}.
+     */
+    @Query(value = "SELECT nextval('transaction_reference_seq')", nativeQuery = true)
+    Long nextReferenceSequence();
+
+    /**
      * Sums the total outgoing transaction amount (WITHDRAWAL + TRANSFER_DEBIT)
      * for a wallet since the given timestamp. Used for KYC daily-send-limit enforcement.
      */

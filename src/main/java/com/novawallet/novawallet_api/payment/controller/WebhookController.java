@@ -59,7 +59,7 @@ public class WebhookController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Malformed callback payload"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid webhook secret"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Reference points at an unknown wallet"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "Webhooks not configured")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "Webhooks not configured or collection callbacks contained")
     })
     public ResponseEntity<ApiResponse<String>> lipilaCollectionCallback(
             @RequestHeader(value = WEBHOOK_SECRET_HEADER, required = false) String providedSecret,

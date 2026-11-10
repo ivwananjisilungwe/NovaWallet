@@ -25,9 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ({@code POST /api/v1/webhooks/lipila/collections}).
  *
  * <p>Covers: shared-secret authentication (constant-time verified, 401 on
- * mismatch), idempotent wallet crediting on Successful callbacks, duplicate
- * suppression via the {@code [LIPILA:<referenceId>]} description marker, and
- * the deliberate 404 for well-formed references pointing at unknown wallets.</p>
+ * mismatch), containment of Successful callbacks (no credit), and the
+ * deliberate 404 for well-formed references pointing at unknown wallets.</p>
  *
  * <p>The webhook route is permitAll in SecurityConfig — these requests carry
  * no Authorization header, which also proves that rule works.</p>
@@ -44,43 +43,134 @@ class PaymentWebhookEndpointIntegrationTest extends EndpointTestSupport {
     private TransactionRepository transactionRepository;
 
     @Test
-    @DisplayName("Successful callback with valid secret credits the target wallet exactly once")
-    void successfulCallback_withValidSecret_creditsWalletOnce() throws Exception {
+    @DisplayName("Successful callback with valid secret is contained and does not credit")
+    void successfulCallback_withValidSecret_isContained() throws Exception {
         RegisteredUser user = registerEndpointUser("whcredit");
         Wallet wallet = createWalletFor(user);
 
         String referenceId = referenceFor(wallet);
         postCallback(SECRET, callbackBody(referenceId, "Successful", "150.00"))
-                .andExpect(status().isOk());
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
 
         Wallet reloaded = walletRepository.findById(wallet.getId()).orElseThrow();
-        assertThat(reloaded.getBalance()).isEqualByComparingTo(new BigDecimal("150.00"));
+        assertThat(reloaded.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
 
-        List<Transaction> deposits = transactionRepository.findAll().stream()
-                .filter(tx -> tx.getType() == TransactionType.DEPOSIT)
-                .filter(tx -> wallet.getId().equals(tx.getReceiverWalletId()))
+        List<Transaction> rows = transactionRepository.findAll().stream()
+                .filter(tx -> wallet.getId().equals(tx.getReceiverWalletId())
+                        || wallet.getId().equals(tx.getSenderWalletId()))
                 .toList();
-        assertThat(deposits).hasSize(1);
-        assertThat(deposits.get(0).getAmount()).isEqualByComparingTo(new BigDecimal("150.00"));
-        assertThat(deposits.get(0).getDescription())
-                .isEqualTo("Lipila mobile-money collection [LIPILA:" + referenceId + "]");
+        assertThat(rows).isEmpty();
     }
 
     @Test
-    @DisplayName("Duplicate callback is acknowledged but does not credit a second time")
-    void duplicateCallback_isIgnored_idempotently() throws Exception {
+    @DisplayName("Successful duplicate replay is contained both times")
+    void successfulCallback_duplicateReplay_isContainedBothTimes() throws Exception {
+        RegisteredUser user = registerEndpointUser("whdup2");
+        Wallet wallet = createWalletFor(user);
+
+        String referenceId = referenceFor(wallet);
+        String body = callbackBody(referenceId, "Successful", "80.00");
+
+        postCallback(SECRET, body).andExpect(status().isServiceUnavailable());
+        postCallback(SECRET, body).andExpect(status().isServiceUnavailable());
+
+        Wallet reloaded = walletRepository.findById(wallet.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Successful callback with an arbitrary large amount is contained")
+    void successfulCallback_withLargeAmount_isContained() throws Exception {
+        RegisteredUser user = registerEndpointUser("whlarge");
+        Wallet wallet = createWalletFor(user);
+
+        String referenceId = referenceFor(wallet);
+        postCallback(SECRET, callbackBody(referenceId, "Successful", "1000000.00"))
+                .andExpect(status().isServiceUnavailable());
+
+        Wallet reloaded = walletRepository.findById(wallet.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Successful callback with amount zero is rejected as bad request")
+    void successfulCallback_withZeroAmount_returnsBadRequest() throws Exception {
+        RegisteredUser user = registerEndpointUser("whzero");
+        Wallet wallet = createWalletFor(user);
+
+        String referenceId = referenceFor(wallet);
+        postCallback(SECRET, callbackBody(referenceId, "Successful", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        Wallet reloaded = walletRepository.findById(wallet.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Successful callback with negative amount is rejected as bad request")
+    void successfulCallback_withNegativeAmount_returnsBadRequest() throws Exception {
+        RegisteredUser user = registerEndpointUser("whneg");
+        Wallet wallet = createWalletFor(user);
+
+        String referenceId = referenceFor(wallet);
+        postCallback(SECRET, callbackBody(referenceId, "Successful", "-10.00"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        Wallet reloaded = walletRepository.findById(wallet.getId()).orElseThrow();
+        assertThat(reloaded.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Successful callback for an unknown wallet returns 404")
+    void successfulCallback_forUnknownWallet_returnsNotFound() throws Exception {
+        UUID unknownWalletId = UUID.randomUUID();
+        String referenceId = referenceFor(unknownWalletId);
+
+        postCallback(SECRET, callbackBody(referenceId, "Successful", "25.00"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("Failed callback is acknowledged without crediting")
+    void failedCallback_acknowledgedWithoutCredit() throws Exception {
+        RegisteredUser user = registerEndpointUser("whfail");
+        Wallet wallet = createWalletFor(user);
+
+        postCallback(SECRET, callbackBody(referenceFor(wallet), "Failed", "60.00"))
+                .andExpect(status().isOk());
+
+        assertThat(walletRepository.findById(wallet.getId()).orElseThrow().getBalance())
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Malformed reference returns 400")
+    void malformedReference_returnsBadRequest() throws Exception {
+        String body = callbackBody("not-a-valid-reference", "Successful", "10.00");
+        postCallback(SECRET, body)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("Duplicate callback is contained both times")
+    void duplicateCallback_isContained_idempotently() throws Exception {
         RegisteredUser user = registerEndpointUser("whdup");
         Wallet wallet = createWalletFor(user);
 
         String body = callbackBody(referenceFor(wallet), "Successful", "80.00");
 
-        postCallback(SECRET, body).andExpect(status().isOk());
-        postCallback(SECRET, body).andExpect(status().isOk()); // replay
+        postCallback(SECRET, body).andExpect(status().isServiceUnavailable());
+        postCallback(SECRET, body).andExpect(status().isServiceUnavailable()); // replay
 
         Wallet reloaded = walletRepository.findById(wallet.getId()).orElseThrow();
         assertThat(reloaded.getBalance())
-                .as("duplicate callback must not double-credit")
-                .isEqualByComparingTo(new BigDecimal("80.00"));
+                .as("contained callback must not credit")
+                .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test

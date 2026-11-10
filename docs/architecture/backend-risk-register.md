@@ -26,12 +26,12 @@ A summary risk matrix is provided at the top (ยง2) and repeated at the bottom (ย
 
 | Risk ID | Title | Category | Severity | Verification Status |
 |---|---|---|---|---|
-| FIN-01 | Direct unverified wallet deposit endpoint (arbitrary self-crediting) | Financial | Critical | Confirmed Vulnerability |
-| FIN-02 | Webhook collection callback trusts unverified payload amount | Financial | Critical | Confirmed Vulnerability |
+| FIN-01 | Direct unverified wallet deposit endpoint (arbitrary self-crediting) | Financial | Critical | TEMPORARILY DISABLED |
+| FIN-02 | Webhook collection callback trusts unverified payload amount | Financial | Critical | TEMPORARILY DISABLED |
 | FIN-03 | Payout debits wallet and calls external provider inside single `@Transactional` | Financial | High | Confirmed Vulnerability |
 | FIN-04 | Provider timeout/error during payout rolls back debit despite possible disbursement | Financial | High | Confirmed Vulnerability |
 | FIN-05 | PendingTransactionCleanupJob marks PENDING payouts FAILED without refund | Financial | High | Confirmed Vulnerability |
-| FIN-06 | Internal transfer acquires pessimistic locks in caller-supplied order (deadlock) | Financial | High | Confirmed Vulnerability |
+| FIN-06 | Internal transfer acquires pessimistic locks in caller-supplied order (deadlock) | Financial | High | VERIFIED |
 | FIN-07 | BalanceRecalculationJob overwrites historical snapshots with current balance | Financial | Medium | Confirmed Defect |
 | FIN-08 | Single-entry Transaction table + mutable wallets.balance instead of double-entry ledger | Financial | Medium | Design Weakness |
 | FIN-09 | Intermediate rounding to scale 2 in percentage fee calculation | Financial | Medium | Design Weakness |
@@ -66,7 +66,7 @@ A summary risk matrix is provided at the top (ยง2) and repeated at the bottom (ย
 - **Title:** Direct unverified wallet deposit endpoint allows arbitrary self-crediting
 - **Category:** Financial
 - **Severity:** Critical
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** TEMPORARILY DISABLED
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/controller/TransactionController.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/service/TransactionService.java`
@@ -84,7 +84,7 @@ A summary risk matrix is provided at the top (ยง2) and repeated at the bottom (ย
 - **Title:** Webhook collection callback trusts unverified payload amount without matching an initiated collection record or currency
 - **Category:** Financial
 - **Severity:** Critical
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** TEMPORARILY DISABLED
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/controller/WebhookController.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/WebhookService.java`
@@ -155,7 +155,7 @@ A summary risk matrix is provided at the top (ยง2) and repeated at the bottom (ย
 - **Title:** Internal wallet transfer acquires pessimistic locks in caller-supplied order, enabling database deadlocks on concurrent opposite-direction transfers
 - **Category:** Financial
 - **Severity:** High
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** VERIFIED
 - **Exact File Path(s):** `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/service/TransactionService.java`
 - **Class & Method Name(s):** `TransactionService.transfer(TransferRequest, UUID)`
 - **Exact Line Numbers:** `TransactionService.java:227-248`
@@ -625,12 +625,12 @@ A summary risk matrix is provided at the top (ยง2) and repeated at the bottom (ย
 
 | Risk ID | Title | Category | Severity | Verification Status |
 |---|---|---|---|---|
-| FIN-01 | Direct unverified wallet deposit endpoint (arbitrary self-crediting) | Financial | Critical | Confirmed Vulnerability |
-| FIN-02 | Webhook collection callback trusts unverified payload amount | Financial | Critical | Confirmed Vulnerability |
+| FIN-01 | Direct unverified wallet deposit endpoint (arbitrary self-crediting) | Financial | Critical | TEMPORARILY DISABLED |
+| FIN-02 | Webhook collection callback trusts unverified payload amount | Financial | Critical | TEMPORARILY DISABLED |
 | FIN-03 | Payout debits wallet and calls external provider inside single `@Transactional` | Financial | High | Confirmed Vulnerability |
 | FIN-04 | Provider timeout/error during payout rolls back debit despite possible disbursement | Financial | High | Confirmed Vulnerability |
 | FIN-05 | PendingTransactionCleanupJob marks PENDING payouts FAILED without refund | Financial | High | Confirmed Vulnerability |
-| FIN-06 | Internal transfer acquires pessimistic locks in caller-supplied order (deadlock) | Financial | High | Confirmed Vulnerability |
+| FIN-06 | Internal transfer acquires pessimistic locks in caller-supplied order (deadlock) | Financial | High | VERIFIED |
 | FIN-07 | BalanceRecalculationJob overwrites historical snapshots with current balance | Financial | Medium | Confirmed Defect |
 | FIN-08 | Single-entry Transaction table + mutable wallets.balance instead of double-entry ledger | Financial | Medium | Design Weakness |
 | FIN-09 | Intermediate rounding to scale 2 in percentage fee calculation | Financial | Medium | Design Weakness |
@@ -668,7 +668,7 @@ The following two findings were discovered during TASK-H test execution and are 
 - **Title:** In-memory `AtomicLong` reference counter seeded once per JVM in `@PostConstruct` collides on `transactions.reference` when instances/tests share DB state
 - **Category:** Financial / Concurrency
 - **Severity:** High
-- **Verification Status:** Confirmed Defect (reproduced by integration tests sharing DB state)
+- **Verification Status:** MITIGATED
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/service/TransactionReferenceGenerator.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/repository/TransactionRepository.java` (referenced `findMaxReferenceByPrefix`)
@@ -686,7 +686,7 @@ The following two findings were discovered during TASK-H test execution and are 
 - **Title:** Maven Wrapper configuration (`.mvn/wrapper/maven-wrapper.properties`) is absent, so `./mvnw` cannot bootstrap Maven in CI
 - **Category:** Operational / Build
 - **Severity:** Medium
-- **Verification Status:** Confirmed Defect (verified by filesystem inspection)
+- **Verification Status:** VERIFIED
 - **Exact File Path(s):**
   - `novawallet-api/mvnw` (wrapper script present)
   - `novawallet-api/mvnw.cmd` (wrapper script present)
@@ -702,3 +702,49 @@ The following two findings were discovered during TASK-H test execution and are 
 ---
 
 *End of register (updated with TASK-H findings FIN-12, OPS-01).*
+
+---
+
+## 10. Phase 1A Implementation Status (Financial Guardrails)
+
+**Branch:** `feature/phase-1a-financial-guardrails`
+**Baseline commit:** `60179fb`
+**Scope:** Financial guardrails only. No Phase 1B, payment orchestration, ledger, modular-monolith, eventing, or microservice work was performed.
+
+### 10.1 Status summary
+
+| Risk ID | Phase 1A status | Evidence / notes |
+|---|---|---|
+| FIN-01 | TEMPORARILY DISABLED | Direct deposit endpoint preserved but no longer credits. Ownership/active checks remain; service throws `ServiceUnavailableException` (HTTP 503) before any balance update, transaction, audit, or notification. No admin/public equivalent exists. Remaining risk: verified collection workflow is not implemented. |
+| FIN-02 | TEMPORARILY DISABLED | Secret authentication and constant-time comparison are unchanged. `WebhookService.processCollectionCallback` validates the payload, parses and validates the wallet reference, returns 200 for non-Successful statuses, normalizes the amount, looks up the wallet, then throws `ServiceUnavailableException` (HTTP 503) before crediting. No `transactionService.deposit` call remains. Remaining risk: no collection initiation/verification workflow and no authoritative amount/currency match. |
+| FIN-06 | VERIFIED | `TransactionService.transfer` acquires pessimistic locks in ascending UUID order using `findByIdWithLock`, maps locked rows back to sender/receiver, rechecks sender active status under lock, and preserves atomic debit/credit with rollback. No isolation downgrade. Residual retry/backoff policy is not part of Phase 1A. |
+| FIN-12 | MITIGATED | `TransactionReferenceGenerator` now allocates from DB-backed `transaction_reference_seq` via `nextval`, with range guard `1..99,999,999`. Migration V12 scans all references, ignores non-conforming rows with `WARN`, fails closed at `>=99,999,999`, restarts to `max+1`, and does not rewrite historical rows. Streaming fix uses nonzero fetch size, autocommit guard, and try-with-resources. **PostgreSQL 16 verified**: fresh migration, historical references, sequence initialization, malformed references (3 ignored), concurrent generation (8 workers x 100 = 800 unique, 0 duplicates), uniqueness enforcement, sequence exhaustion, and migration failure/recovery all passed. Java generator tested against PostgreSQL 16 (16 threads x 250 = 4000 unique, 0 duplicates, 1831ms). |
+| OPS-01 | VERIFIED | Maven Wrapper 3.3.4 script-only configuration restored with Maven 3.9.16 and pinned SHA-256 from the official ASF SHA-512. Clean-cache run and tampered-checksum failure were verified; `mvnw` mode is `755`; wrapper properties remain untracked/ignored by design. |
+
+### 10.2 Implementation details
+
+- **FIN-01 files:** `transaction/controller/TransactionController.java`, `transaction/service/TransactionService.java`. `deposit(...)` still calls `findActiveWalletWithLock(walletId, userId)`, then throws `ServiceUnavailableException("Direct wallet deposits are unavailable until verified payment collection is implemented")`. No `walletRepository.updateBalance`, `Transaction` save, audit record, or notification occurs.
+- **FIN-02 files:** `payment/controller/WebhookController.java`, `payment/service/WebhookService.java`. The callback still authenticates the static `X-Webhook-Secret` header with constant-time comparison, parses `NW:<walletId>:<uuid>`, validates amount/UUID, returns 200 for non-Successful statuses, and looks up the wallet before throwing `ServiceUnavailableException`. The previous `transactionRepository.existsByDescription` deduplication and `transactionService.deposit` credit path were removed. `DepositRequest` and `TransactionService` imports were removed from `WebhookService`.
+- **FIN-06 files:** `transaction/service/TransactionService.java`, `transaction/repository/WalletRepository.java` (existing `findByIdWithLock`). The transfer path detaches the unlocked sender entity, locks the lower UUID first and higher UUID second, maps the locked rows back to sender/receiver, rechecks sender active status, and preserves atomic debit/credit plus rollback. `EntityManager` was added for the detach guard.
+- **FIN-12 files:** `transaction/repository/TransactionRepository.java` (`nextReferenceSequence()`), `transaction/service/TransactionReferenceGenerator.java`, `src/main/java/db/migration/V12__CreateTransactionReferenceSequence.java`. The generator no longer uses `AtomicLong`, `@PostConstruct`, date-based reset, or `findMaxReferenceByPrefix`; it calls `nextval('transaction_reference_seq')` and enforces the `1..99,999,999` range. Historical rows are never rewritten.
+- **OPS-01 files:** `.mvn/wrapper/maven-wrapper.properties` (untracked by repository policy) plus `mvnw`/`mvnw.cmd`. Maven 3.9.16 and SHA-256 pinning were verified; `./mvnw clean test` on JDK 17 passed 175/175 tests with exit code 0.
+
+### 10.3 Test evidence
+
+- Full regression: 175 tests, 0 failures, 0 errors, 0 skipped on H2 with JDK 17 via `./mvnw clean test`.
+- Baseline before Phase 1A: 144 tests with 8 failures caused by duplicate reference collisions.
+- FIN-01 containment tests: `TransactionEdgeCaseEndpointIntegrationTest` verifies unavailable 503 responses, zero balance change, and zero transaction rows for direct, idempotent, non-owner, and frozen-wallet cases.
+- FIN-02 containment tests: `PaymentWebhookEndpointIntegrationTest` verifies valid-secret Successful callbacks return 503 with no credit/no rows, duplicate replay containment, arbitrary large amounts, unknown wallets, and constant-time secret rejection.
+- FIN-06 locking tests: `TransactionServiceTransferLockOrderTest` and `ConcurrentTransferIntegrationTest` verify canonical lock ordering and opposite-direction transfer behavior.
+- FIN-12 tests (H2): `TransactionReferenceSequenceMigrationTest` (seed above historical max, empty database first value, 20,000 valid + 20,000 ignored rows) and `V12MigrationStreamingGuardTest` (autocommit guard, fetch-size guard, valid streaming order).
+   - FIN-12 tests (PostgreSQL 16): `Pg16TransactionReferenceTest` (8 tests: fresh migration, historical references, sequence init, malformed refs, concurrent generation 8x100=800 unique, uniqueness enforcement, sequence exhaustion, migration failure/recovery) and `Pg16TransactionReferenceGeneratorTest` (3 tests: Java concurrency 16x250=4000 unique, exhaustion guard, format). All passed against PostgreSQL 16.15.
+- OPS-01 verification: clean-cache wrapper bootstrap and tampered-checksum failure.
+
+### 10.4 Residual risks and out-of-scope observations
+
+- FIN-01/FIN-02 are contained, not resolved: no verified collection initiation, provider verification, amount/currency match, idempotency persistence, or replay protection beyond the existing static secret.
+- FIN-06 has no automatic deadlock retry/backoff; canonical ordering is the Phase 1A mitigation.
+- FIN-12 PostgreSQL 16 verification: PASSED. All 8 migration tests (fresh, historical, sequence init, malformed, concurrent, uniqueness, exhaustion, failure/recovery) and 3 Java generator tests (concurrency 4000 unique, exhaustion guard, format) passed against PostgreSQL 16.15. No corrections were required.
+- Security review result for Phase 1A: PASS WITH ISSUES, with three low findings: unused webhook fields/`transactionRepository`/`transactionService`; stale Javadoc; amount validation occurs before unknown-wallet 404 on Successful callbacks.
+- Out-of-scope observations: `AdminService.toggleUserDeletedStatus` has a status race without a pessimistic lock; `BalanceRecalculationJob` naming/scope; `AccountNumberGenerator` uniqueness was not reviewed.
+- Cosmetic audit-message fix is not part of Phase 1A.

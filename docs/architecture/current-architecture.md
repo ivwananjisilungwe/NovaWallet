@@ -3,7 +3,7 @@
 > **Document**: `docs/architecture/current-architecture.md`
 > **Scope**: Verified against source tree at `novawallet-api/` (no `.git` directory present — unversioned working tree).
 > **Stack**: Java 17, Spring Boot 3.5.3, Maven, PostgreSQL, Flyway.
-> **Counts (verified)**: 145 main Java files, 34 test Java files, 15 `@RestController` classes, 1 `@RestControllerAdvice`, 20 `@Service` classes, 10 `JpaRepository` interfaces, 10 JPA `@Entity` classes, 37 DTOs, 13 enumerations, 11 Flyway migrations.
+> **Counts (verified)**: 146 main Java files, 40 test Java files, 15 `@RestController` classes, 1 `@RestControllerAdvice`, 20 `@Service` classes, 10 `JpaRepository` interfaces, 10 JPA `@Entity` classes, 37 DTOs, 13 enumerations, 12 Flyway migrations (11 SQL + V12 Java).
 
 ---
 
@@ -16,7 +16,7 @@
 - **Spring Boot**: 3.5.3 (`spring-boot-starter-parent` 3.5.3).
 - **Build tool**: Maven (`novawallet-api/pom.xml`, `mvnw`/`mvnw.cmd` wrappers).
 - **Database**: PostgreSQL (runtime driver `org.postgresql:postgresql`), H2 in-memory for tests (`com.h2database:h2`, test scope).
-- **Migrations**: Flyway (`flyway-core` + `flyway-database-postgresql`), 11 migrations `V1__init_schema.sql` … `V11__add_notification_read_at.sql` under `novawallet-api/src/main/resources/db/migration/`.
+- **Migrations**: Flyway (`flyway-core` + `flyway-database-postgresql`), 12 migrations `V1__init_schema.sql` … `V11__add_notification_read_at.sql` plus Java migration `V12__CreateTransactionReferenceSequence.java` under `novawallet-api/src/main/java/db/migration/`.
 - **Profiles**: `dev` (default, `spring.profiles.active: dev`), `prod`. `application.yml`, `application-dev.yml`, `application-prod.yml` under `novawallet-api/src/main/resources/`.
 
 ### Dependencies (from `pom.xml`)
@@ -114,7 +114,7 @@ Each feature package typically contains `controller/`, `service/`, `repository/`
 | # | Repository | File | Custom queries (verified) |
 |---|---|---|---|
 | 1 | `WalletRepository` | `wallet/repository/WalletRepository.java` | `findByUserId`, `findByAccountNumber`, `existsByAccountNumber`, `findByStatus`, `findByIdWithLock` (pessimistic `SELECT … FOR UPDATE`), `updateBalance` (native `UPDATE wallets SET balance = balance + :amount … WHERE balance + :amount >= 0`) |
-| 2 | `TransactionRepository` | `transaction/repository/TransactionRepository.java` | `findByReference`, `existsByDescription`, `findBySenderWalletIdOrReceiverWalletIdOrderByCreatedAtDesc`, `countByReferenceStartingWith`, `findMaxReferenceByPrefix`, `sumDailyOutgoing`, `countOutgoingByUserSince`, `sumOutgoingByUserSince`, `findPendingOlderThan`, `recalculateMissingBalances` |
+| 2 | `TransactionRepository` | `transaction/repository/TransactionRepository.java` | `findByReference`, `existsByDescription`, `findBySenderWalletIdOrReceiverWalletIdOrderByCreatedAtDesc`, `countByReferenceStartingWith`, `findMaxReferenceByPrefix`, `nextReferenceSequence`, `sumDailyOutgoing`, `countOutgoingByUserSince`, `sumOutgoingByUserSince`, `findPendingOlderThan`, `recalculateMissingBalances` |
 | 3 | `UserRepository` | `user/repository/UserRepository.java` | `findByEmail`, `findByPhone`, `findByVerificationToken`, `findByPasswordResetToken`, `existsByEmail`, `existsByPhone`, `findByIdIncludingDeleted` (native), `findByKycStatusAndKycApprovedAtBefore` |
 | 4 | `KycDocumentRepository` | `kyc/repository/KycDocumentRepository.java` | `findByUserId`, `findByUserIdAndStatus`, `countByUserIdAndStatus` |
 | 5 | `FeeConfigurationRepository` | `fee/repository/FeeConfigurationRepository.java` | `findByTransactionTypeAndActiveTrue` |
@@ -169,6 +169,7 @@ Each feature package typically contains `controller/`, `service/`, `repository/`
 | V9 | `V9__create_idempotency_keys_table.sql` | `idempotency_keys` table |
 | V10 | `V10__create_notifications_tables.sql` | `notifications` + `notification_attempts` |
 | V11 | `V11__add_notification_read_at.sql` | `read_at` column + index |
+| V12 | `V12__CreateTransactionReferenceSequence.java` | Creates and seeds DB-backed `transaction_reference_seq` for FIN-12; scans references, ignores non-conforming rows, fails closed at capacity; does not rewrite historical rows |
 
 ### 4.2 Tables, keys, FKs
 
@@ -203,13 +204,14 @@ No `CHECK` constraints exist on any table: `balance >= 0` is enforced only in ap
 
 ### 4.6 `wallets.balance` as authoritative mutable column
 
-`wallets.balance` is a stored mutable `DECIMAL(15,2)` column mutated at 5 code sites (verified by grep):
+`wallets.balance` is a stored mutable `DECIMAL(15,2)` column. After Phase 1A, the direct deposit and webhook collection paths no longer mutate it; remaining mutation sites are verified by grep:
 
-1. `TransactionService.deposit` — `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/service/TransactionService.java:102` (deposit path calls `walletRepository.updateBalance`).
-2. `TransactionService.withdraw` — line 166.
-3. `TransactionService.transfer` — lines 273 and 280 (debit sender, credit receiver).
-4. `PayoutService.payout` — `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/PayoutService.java:125`.
-5. `WebhookService.processCollectionCallback` — `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/WebhookService.java:124`.
+1. `TransactionService.withdraw` — `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/service/TransactionService.java` (withdraw path calls `walletRepository.updateBalance`).
+2. `TransactionService.transfer` — debit sender and credit receiver.
+3. `PayoutService.payout` — `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/PayoutService.java` (payout path).
+4. `WebhookService.processCollectionCallback` — previously credited via `TransactionService.deposit`; now throws `ServiceUnavailableException` before any balance update (FIN-02 contained).
+
+`TransactionService.deposit` now preserves ownership/active checks and then throws `ServiceUnavailableException`; it performs no balance update, transaction save, audit record, or notification (FIN-01 contained).
 
 This is **not** a double-entry ledger: balances are derived implicitly from transaction rows via `recalculateMissingBalances()` (job + repository), and `balance_before`/`balance_after` snapshots on `transactions` are back-filled by `TransactionRepository.recalculateMissingBalances()` when null. There is no `ledger_entries` table.
 
@@ -288,16 +290,16 @@ graph TD
 
 ## 7. Test-Execution Findings (TASK-H) — Reference Generation & Build Tooling
 
-### 7.1 TransactionReferenceGenerator (in-memory AtomicLong) — FIN-12
+### 7.1 TransactionReferenceGenerator (DB-backed sequence) — FIN-12
 
-- **Component:** `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/service/TransactionReferenceGenerator.java` (lines 19-74).
-- **Behaviour:** `AtomicLong counter` is instance-level; `initCounterFromDatabase()` is `@PostConstruct` and seeds the counter once per JVM from `TransactionRepository.findMaxReferenceByPrefix(...)`. `generate()` increments the local counter and resets to 0 on date change without re-reading the DB.
-- **Risk:** Cross-instance / cross-test reference collisions on the unique `transactions.reference` column, surfacing as `DataIntegrityViolationException`. See `backend-risk-register.md` FIN-12.
-- **Status:** Confirmed defect (reproduced by integration tests sharing DB state). Correction pending: DB-backed sequence + retry.
+- **Component:** `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/service/TransactionReferenceGenerator.java`; `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/repository/TransactionRepository.java` (`nextReferenceSequence()`); `novawallet-api/src/main/java/db/migration/V12__CreateTransactionReferenceSequence.java`.
+- **Behaviour:** The sequence suffix is allocated by PostgreSQL sequence `transaction_reference_seq` via `SELECT nextval(...)`. The generator no longer uses `AtomicLong`, `@PostConstruct`, date-based reset, or `findMaxReferenceByPrefix`; it enforces the supported range `1..99,999,999`. Migration V12 scans all references, ignores non-conforming rows with a warning, fails closed at `>=99,999,999`, restarts to `max+1`, and never rewrites historical rows.
+- **Risk:** Cross-instance / cross-test reference collisions are mitigated by the database-backed sequence. PostgreSQL 16 verified: all 8 migration tests and 3 Java generator tests passed against PostgreSQL 16.15. No corrections were required. Caveats: PostgreSQL 16 verification passed; sequence capacity finite (99,999,999).
+- **Status:** MITIGATED (Phase 1A).
 
-### 7.2 Missing Maven Wrapper properties — OPS-01
+### 7.2 Maven Wrapper properties — OPS-01
 
-- **Component:** `novawallet-api/mvnw`, `novawallet-api/mvnw.cmd` present; `novawallet-api/.mvn/wrapper/maven-wrapper.properties` absent.
-- **Behaviour:** `./mvnw` cannot bootstrap Maven on a clean checkout; CI/Docker steps invoking the wrapper fail before tests run.
-- **Risk:** Build/CI unreliability and Maven version drift. See `backend-risk-register.md` OPS-01.
-- **Status:** Confirmed defect (verified by filesystem inspection). Correction pending: commit wrapper properties or standardize on system Maven.
+- **Component:** `novawallet-api/mvnw`, `novawallet-api/mvnw.cmd`, and `novawallet-api/.mvn/wrapper/maven-wrapper.properties` (untracked by repository policy).
+- **Behaviour:** Wrapper 3.3.4 script-only configuration uses Maven 3.9.16 with a pinned SHA-256 from the official ASF SHA-512. Clean-cache bootstrap and tampered-checksum failure were verified; `mvnw` mode is `755`.
+- **Risk:** Build/CI unreliability and Maven version drift are mitigated. Wrapper properties remain untracked by design.
+- **Status:** VERIFIED (Phase 1A).
