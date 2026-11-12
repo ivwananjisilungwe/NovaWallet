@@ -28,11 +28,11 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 |---|---|---|---|---|
 | FIN-01 | Direct unverified wallet deposit endpoint (arbitrary self-crediting) | Financial | Critical | TEMPORARILY DISABLED |
 | FIN-02 | Webhook collection callback trusts unverified payload amount | Financial | Critical | TEMPORARILY DISABLED |
-| FIN-03 | Payout debits wallet and calls external provider inside single `@Transactional` | Financial | High | Confirmed Vulnerability |
-| FIN-04 | Provider timeout/error during payout rolls back debit despite possible disbursement | Financial | High | Confirmed Vulnerability |
-| FIN-05 | PendingTransactionCleanupJob marks PENDING payouts FAILED without refund | Financial | High | Confirmed Vulnerability |
+| FIN-03 | Payout debits wallet and calls external provider inside single `@Transactional` | Financial | High | MITIGATED |
+| FIN-04 | Provider timeout/error during payout rolls back debit despite possible disbursement | Financial | High | MITIGATED |
+| FIN-05 | PendingTransactionCleanupJob marks PENDING payouts FAILED without refund | Financial | High | MITIGATED (Phase 1B) |
 | FIN-06 | Internal transfer acquires pessimistic locks in caller-supplied order (deadlock) | Financial | High | VERIFIED |
-| FIN-07 | BalanceRecalculationJob overwrites historical snapshots with current balance | Financial | Medium | Confirmed Defect |
+| FIN-07 | BalanceRecalculationJob overwrites historical snapshots with current balance | Financial | Medium | MITIGATED |
 | FIN-08 | Single-entry Transaction table + mutable wallets.balance instead of double-entry ledger | Financial | Medium | Design Weakness |
 | FIN-09 | Intermediate rounding to scale 2 in percentage fee calculation | Financial | Medium | Design Weakness |
 | FIN-10 | Missing payout status polling, disbursement webhook, refund/reversal workflows | Financial | Medium | Design Weakness |
@@ -41,7 +41,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 | SEC-02 | Password change / admin deactivation do not revoke refresh tokens | Security | High | Confirmed Vulnerability |
 | SEC-03 | Plaintext email-verification & password-reset tokens in Notification + logs | Security | High | Confirmed Vulnerability |
 | SEC-04 | `spring.profiles.active: dev` hardcoded as default in base application.yml | Security | High | Confirmed Misconfiguration |
-| SEC-05 | Webhook auth = static header only; no HMAC/timestamp/nonce; string-match dedup | Security | High | Design Weakness |
+| SEC-05 | Webhook auth (disbursement): Lipila HMAC + timestamp + dedup implemented; collections contained | Security | High | MITIGATED (disbursement) |
 | SEC-06 | No logout endpoint exposed despite AuthService.logout() existing | Security | Medium | Confirmed Weakness |
 | SEC-07 | Email verification token has no expiration timestamp | Security | Medium | Confirmed Weakness |
 | SEC-08 | JwtUtil does not enforce minimum key length/entropy or iss/aud claims | Security | Medium | Confirmed Weakness |
@@ -104,15 +104,16 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Title:** Payout workflow debits wallet and invokes external HTTP provider inside a single `@Transactional` method
 - **Category:** Financial
 - **Severity:** High
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** MITIGATED
 - **Exact File Path(s):** `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/PayoutService.java`
-- **Class & Method Name(s):** `PayoutService.payout(UUID, PayoutRequest, UUID)`
-- **Exact Line Numbers:** `PayoutService.java:106-212` (method); `@Transactional` at 107; `walletRepository.updateBalance` at 125; `paymentGateway.initiateDisbursement` at 133 (via 222-239)
-- **Actual Code Behaviour:** The entire method is annotated `@Transactional` (line 107). It acquires a `PESSIMISTIC_WRITE` row lock on the wallet (line 111 via `findByIdWithLock`), debits the wallet (line 125), then calls `paymentGateway.initiateDisbursement` (line 133) which performs an HTTP POST with up to 5s connect + 10s read timeout (LipilaGateway lines 44-47). The DB row lock is held for the duration of the network I/O (up to 15s).
-- **Failure / Exploit Scenario:** Under concurrent payouts from the same wallet, all but one block on the pessimistic lock for up to 15s, exhausting the Hikari pool (10 connections) and servlet threads. A slow/gateway timeout stalls the whole payment path. The lock is held across a network boundary, violating the "no I/O inside transactions" rule.
-- **Financial / Business Consequence:** Throughput collapse; pool exhaustion → cascading 503s for unrelated endpoints; potential deadlock with other transactions wanting the wallet row.
-- **Concrete Recommended Correction:** Split into two phases: (1) a short transaction that validates guards, debits the wallet, and persists a `PENDING` payout intent (with provider reference); (2) an out-of-transaction HTTP call; (3) a follow-up transaction recording the result and, on failure, a compensating credit. Use an outbox/saga pattern. Never hold a DB lock across network I/O.
-- **Suggested Verification Test Case:** Load test: N concurrent payouts on one wallet must not exhaust the connection pool; assert max lock-hold time < 100ms. Chaos test: gateway returns after 12s → local intent remains PENDING, no pool starvation.
+- **Class & Method Name(s):** `PayoutService.payout(...)`, `PayoutService.initiatePayout(...)`, `PayoutService.executeDisbursement(...)`, `PayoutService.finalizePayout(...)`
+- **Exact Line Numbers:** `PayoutService.java:131-159` (`payout` entry point); `:171-232` (`initiatePayout` Stage A); `:241-257` (`executeDisbursement` Stage B); `:271-354` (`finalizePayout` Stage C)
+- **Actual Code Behaviour:** Phase 1B split the monolithic `@Transactional` method into three short stages. Stage A (`initiatePayout`) runs in a short `TransactionTemplate` transaction: validates guards, acquires the wallet pessimistic `FOR UPDATE` lock, debits the wallet, persists a `PENDING` payout record with the provider reference and idempotency marker, then commits — **releasing the lock**. Stage B (`executeDisbursement`) calls `LipilaGateway.initiateDisbursement()` **outside any transaction** with no DB lock held (connect 5s / read 10s timeouts). Stage C (`finalizePayout`) runs in a short transaction and settles: `Successful` → `SUCCESSFUL`; `Failed` → compensating credit + `FAILED`; `Pending`/uncertain → `PENDING_RECONCILIATION` (debit preserved, no auto-refund). Stage B transport exceptions are caught by `payout()`, synthesised to `Pending` (uncertain), and routed into Stage C (`finalizePayout`), which marks `PENDING_RECONCILIATION` with the debit preserved — Stage C is **not** bypassed and no exception escapes `payout()` (awaits Batch 3 reconciliation to settle the uncertain record).
+- **Failure / Exploit Scenario:** The HTTP call no longer holds a DB connection or row lock, so pool exhaustion and lock-held-across-network-I/O are eliminated. Residual risk: a Stage B transport exception leaves the payout `PENDING` with a durable debit and no `PENDING_RECONCILIATION` marking until Batch 3 reconciliation runs.
+- **Financial / Business Consequence:** Throughput restored; no lock held across network boundary. Reconciliation of uncertain/timeout payouts remains a Batch 3 gap.
+- **Concrete Recommended Correction (implemented):** Three-stage short-transaction pattern in `PayoutService`; wallet debit durable in Stage A; compensating credit on provider `Failed`; `PENDING_RECONCILIATION` on uncertain outcomes; idempotency via `IdempotencyFilter` + description-marker scan.
+- **Suggested Verification Test Case:** Load test: N concurrent payouts on one wallet must not exhaust the connection pool; assert lock-hold time < 100ms. Timeout test: gateway unreachable → Stage A commits (debit durable, record `PENDING`), Stage B transport exception is caught and synthesised to `Pending`, Stage C runs and marks `PENDING_RECONCILIATION` (debit preserved, no auto-refund). Provider-failure test: mock gateway returns `Failed` → compensating credit applied, balance restored, `FAILED` recorded. Idempotency test: repeat `Idempotency-Key` → no second debit, cached response returned.
+- **Residual gap (Batch 3):** No reconciliation scheduler to poll `checkStatus` for `PENDING`/`PENDING_RECONCILIATION` records; no disbursement webhook to settle provider completions asynchronously.
 
 #### FIN-04 — Provider timeout/error during payout rolls back debit despite possible disbursement
 
@@ -120,15 +121,16 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Title:** External provider timeout or network error during payout triggers full database rollback of wallet debit even if Lipila accepted and disbursed the payout
 - **Category:** Financial
 - **Severity:** High
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** MITIGATED
 - **Exact File Path(s):** `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/PayoutService.java`
-- **Class & Method Name(s):** `PayoutService.payout(...)`; `PayoutService.initiateDisbursement(...)`
-- **Exact Line Numbers:** `PayoutService.java:199-240` (helpers); catch block 232-239; class javadoc 50-54
-- **Actual Code Behaviour:** `initiateDisbursement` (lines 222-239) catches any `RuntimeException` from `paymentGateway.initiateDisbursement`, logs it, and rethrows as `BadRequestException`. Because the method is `@Transactional` (FIN-03), the exception rolls back the wallet debit (line 125) and any `Transaction` rows. If Lipila actually accepted the request before the timeout, real money leaves the merchant float while NovaWallet has no local record and the customer's balance is restored.
-- **Failure / Exploit Scenario:** Gateway accepts the disbursement, then the response is lost to a network blip/timeout. NovaWallet rolls back → customer keeps the money in-wallet AND the provider pays out → double spend / unbacked payout. Or the reverse: customer is charged nothing locally but money leaves the float → orphaned funds.
-- **Financial / Business Consequence:** Lost merchant float; unrecoverable discrepancy between provider and ledger; requires manual reconciliation; regulatory reporting impact.
-- **Concrete Recommended Correction:** Persist a `PENDING` payout intent (with provider reference) in a committed transaction before the HTTP call; on timeout, leave the intent `PENDING` and surface it to reconciliation (poll `checkStatus`, implement disbursement webhook). Never roll back a debit that may have been accepted externally. Add a reconciliation job.
-- **Suggested Verification Test Case:** Test: mock gateway throws `ResourceAccessException` after recording the call → assert a `PENDING` `Transaction` row exists with the provider reference and the wallet remains debited. Assert `checkStatus` is invoked by a reconciliation job within SLA.
+- **Class & Method Name(s):** `PayoutService.payout(...)`; `PayoutService.executeDisbursement(...)`; `PayoutService.finalizePayout(...)`
+- **Exact Line Numbers:** `PayoutService.java:241-257` (`executeDisbursement` catch block); `:271-354` (`finalizePayout`); class javadoc lines 42-61
+- **Actual Code Behaviour:** Stage A commits the wallet debit and a `PENDING` payout record **before** the gateway call, so the debit is durable. Stage B (`executeDisbursement`) calls the gateway outside any transaction; on `RuntimeException` (connect/read timeout, unreachable) it throws `BadRequestException`, which `payout()` catches and synthesises to `Pending` (uncertain) so Stage C **is** reached and marks `PENDING_RECONCILIATION` with the debit preserved. When the gateway returns a response, Stage C settles: `Successful` → `SUCCESSFUL`; `Failed` → compensating credit + `FAILED`; `Pending`/uncertain → `PENDING_RECONCILIATION` with the debit preserved. A debit is never rolled back after a provider may have accepted the disbursement.
+- **Failure / Exploit Scenario:** Gateway accepts the disbursement but the response is lost to a timeout. Stage A already committed the debit and `PENDING` record; NovaWallet does not auto-refund. The payout is left `PENDING_RECONCILIATION` awaiting Batch 3 reconciliation via `checkStatus`, preventing the double-spend / orphaned-funds scenario. If the gateway returns `Failed`, Stage C applies a compensating credit and marks `FAILED`.
+- **Financial / Business Consequence:** No automatic rollback of a possibly-accepted disbursement; uncertain amounts are preserved and flagged for reconciliation rather than silently reversed. Residual risk: reconciliation scheduler and disbursement webhook are Batch 3 work, so `PENDING_RECONCILIATION` records are not yet auto-settled.
+- **Concrete Recommended Correction (implemented):** Debit-first durable intent in Stage A; out-of-transaction gateway call; Stage C compensating credit on `Failed`; `PENDING_RECONCILIATION` on uncertain outcomes; no auto-refund of uncertain amounts.
+- **Suggested Verification Test Case:** Timeout test: mock gateway throws `ResourceAccessException` → Stage A `PENDING` row + wallet debit persist; Stage B transport exception caught, Stage C runs and marks `PENDING_RECONCILIATION`; balance remains debited (no refund). Provider-failure test: mock gateway returns `Failed` → compensating credit restores balance, row marked `FAILED`, `PAYOUT_FAILED_COMPENSATED` audit recorded. Uncertain test: gateway returns `Pending` → row marked `PENDING_RECONCILIATION`, debit preserved, `PAYOUT_PENDING_RECONCILIATION` audit recorded.
+- **Residual gap (Batch 3):** No reconciliation scheduler to poll `checkStatus` for `PENDING`/`PENDING_RECONCILIATION` records; no disbursement webhook to settle provider completions asynchronously.
 
 #### FIN-05 — PendingTransactionCleanupJob marks PENDING payouts FAILED without refund
 
@@ -136,18 +138,19 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Title:** `PendingTransactionCleanupJob` marks `PENDING` transactions older than 24h as `FAILED` without refunding/reversing debited payout funds
 - **Category:** Financial
 - **Severity:** High
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** MITIGATED (Phase 1B)
+- **Mitigation (Phase 1B):** `PendingTransactionCleanupJob.cleanupStalePendingTransactions()` now partitions stale rows. Payout rows (those carrying a non-null `provider_reference`, i.e. V14 payouts) are **never** marked `FAILED` and never refunded by this job: their `next_status_check_at` is made due immediately via the conditional `reschedulePayoutReconciliation` (`next_status_check_at` null or past), routing them into the reconciliation scheduler (`PayoutReconciliationService`), which re-queries the provider authoritatively and settles with a compensating credit only on a confirmed `Failed`. A payout already parked for manual investigation (2999 sentinel) is skipped, so the daily sweep can never un-park it or re-trigger the 24h admin alert. Only legacy non-payout pendings (deposits/transfers awaiting legacy webhook confirmation) retain the historical `FAILED`-after-24h behaviour. The job is `@Transactional` and idempotent (terminal rows are no longer `PENDING` and are not re-selected). The 24h park-and-alert path itself never fails or refunds — it parks the payout for manual investigation and alerts admins exactly once.
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/schedule/PendingTransactionCleanupJob.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/repository/TransactionRepository.java`
+  - `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/PayoutReconciliationService.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/PayoutService.java`
-- **Class & Method Name(s):** `PendingTransactionCleanupJob.cleanupStalePendingTransactions()`; `TransactionRepository.findPendingOlderThan(...)`; `PayoutService.payout(...)`
-- **Exact Line Numbers:** `PendingTransactionCleanupJob.java:38-55`; `TransactionRepository.java:67-70` (actually 76-81) `findPendingOlderThan`; `PayoutService.payout` debits at line 125
-- **Actual Code Behaviour:** `PayoutService.payout` debits the wallet immediately (line 125) even when the gateway returns `Pending` (status stays `PENDING`, line 147). `PendingTransactionCleanupJob` (lines 38-55) selects rows with status `PENDING` older than 24h (`findPendingOlderThan`, lines 76-81) and sets their status to `FAILED` (lines 49-52) without restoring the debited balance or writing a compensating credit.
-- **Failure / Exploit Scenario:** A payout that stays `PENDING` (gateway never calls back, no status polling exists — FIN-10) is silently flipped to `FAILED` after 24h. The customer's debited balance is never restored, permanently orphaning customer funds. Conversely, if the provider later completes it, money moves with no local record.
-- **Financial / Business Consequence:** Permanent loss of customer funds (orphaned debits); unreconciled provider-side completions; customer disputes and regulatory exposure.
-- **Concrete Recommended Correction:** Before marking a stale `PENDING` payout `FAILED`, verify provider status via `checkStatus`; if still pending/unknown, do not fail it automatically (escalate to ops). If failing, issue a compensating wallet credit and a reversal `Transaction` row, and emit an audit entry. Make the job idempotent and auditable.
-- **Suggested Verification Test Case:** Test: seed a `PENDING` payout row 25h old with a known wallet debit; run the job with a mocked gateway returning `Pending` → row remains `PENDING` and balance unchanged. With gateway returning `Failed` → row becomes `FAILED` and balance restored. Assert audit row written.
+- **Class & Method Name(s):** `PendingTransactionCleanupJob.cleanupStalePendingTransactions()`; `TransactionRepository.findPendingOlderThan(...)`; `TransactionRepository.reschedulePayoutReconciliation(...)`; `PayoutReconciliationService.reconcileDuePayouts()`
+- **Exact Line Numbers:** `PendingTransactionCleanupJob.java` (whole class); `TransactionRepository.java:findPendingOlderThan`; `PayoutReconciliationService.java:reconcileDuePayouts`
+- **Actual Code Behaviour (current):** `PayoutService.payout` debits the wallet durably in Stage A and the payout row is created as `PENDING` (V14 columns populated). The daily cleanup job now routes stale payout rows into reconciliation instead of failing them. Payouts reach `FAILED` only through an authoritative provider outcome in Stage C (with a compensating credit) or through the reconciliation scheduler's authoritative re-query — never through age alone.
+- **Original vulnerability:** a `PENDING` payout older than 24h was silently flipped to `FAILED` without restoring the debited balance, permanently orphaning customer funds (and, conversely, a provider-side completion would have had no local record).
+- **Remaining operational limitations:** (a) the reconciliation scheduler is disabled by default (`app.scheduler.payout-reconciliation.enabled`, `matchIfMissing=false`) and must be deliberately enabled per environment; (b) a payout that never receives an authoritative provider outcome is parked after 24h for manual investigation rather than auto-resolved; (c) the legacy non-payout pending path still marks `FAILED` after 24h without compensating (pre-existing behaviour for non-payout rows).
+- **Suggested Verification Test Case:** `PendingTransactionCleanupJobTest` (routes stale payouts to reconciliation, never auto-fails; legacy pendings still failed); `PayoutReconciliationServiceTest` (uncertain outcomes preserve the debit and reschedule; 24h park-and-alert; alert dedup).
 
 #### FIN-06 — Internal transfer acquires pessimistic locks in caller-supplied order
 
@@ -171,7 +174,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Title:** `BalanceRecalculationJob` overwrites missing historical `balance_before`/`balance_after` snapshots with the wallet's current balance
 - **Category:** Financial
 - **Severity:** Medium
-- **Verification Status:** Confirmed Defect
+- **Verification Status:** MITIGATED
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/notification/schedule/BalanceRecalculationJob.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/transaction/repository/TransactionRepository.java`
@@ -182,6 +185,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Financial / Business Consequence:** Loss of audit trail integrity; inability to reconcile historical statements; forensic/compliance exposure.
 - **Concrete Recommended Correction:** Do not backfill with the current balance. Either compute the correct historical values by replaying the ledger in chronological order (per wallet), or leave them NULL and mark them as "unavailable". Add a NOT NULL constraint only after backfill is verified. Add a unit test asserting the job never changes a non-null snapshot.
 - **Suggested Verification Test Case:** Test: insert a transaction with NULL snapshots for a wallet whose current balance differs from the historical value; run the job; assert snapshots remain NULL (or are computed correctly by replay) and that no existing non-null snapshot changed.
+- **Containment (BalanceRecalculationJob containment — not one of the ten P1B-CLOSE closure findings):** Contained via `@ConditionalOnProperty(name = "app.scheduler.balance-recalc.enabled", havingValue = "true", matchIfMissing = false)` on `BalanceRecalculationJob`. In production (`application-prod.yml`), `app.scheduler.balance-recalc.enabled: false` so the job bean is never registered and its scheduled method never runs. Containment is verified by `BalanceRecalculationJobDisabledInProdTest` (`src/test/java/com/novawallet/novawallet_api/notification/schedule/BalanceRecalculationJobDisabledInProdTest.java`), which asserts the bean is absent under the `prod` profile and that `TransactionRepository.recalculateMissingBalances()` is never invoked.
 
 ### 3.2 Security — Confirmed
 
@@ -528,11 +532,13 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Title:** Webhook authentication relies solely on static `X-Webhook-Secret` header comparison without payload HMAC signing, timestamp tolerance window, or replay nonce table; deduplication checks `existsByDescription` string matching
 - **Category:** Security
 - **Severity:** High
-- **Verification Status:** Design Weakness
+- **Verification Status:** MITIGATED (disbursement path) — collections path remains contained (no credits)
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/controller/WebhookController.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/payment/service/WebhookService.java`
-- **Class & Method Name(s):** `WebhookController.verifySecret(...)` (lines 77-99); `WebhookService.processCollectionCallback(...)` (lines 114-121)
+- **Class & Method Name(s):** `WebhookController.verifySecret(...)`; `WebhookService.processDisbursementCallback(...)`; `WebhookService.verifySignature(...)`
+
+**Batch 3 update (2026-11-11):** Disbursement webhook now implements Lipila's Standard Webhooks HMAC-SHA256 scheme (webhook-id.timestamp.rawBody, base64 secret, base64 signature, `v1,` prefix, multi-signature rotation, 300s tolerance), required by default (`app.payments.lipila.webhook-hmac-required=true`); durable event-id dedup via `provider_webhook_events` unique `(provider,event_id)`; reference/amount match; authoritative provider re-query before finalization; quarantine/deferred paths. Collections callback remains deliberately contained (no unverified credits).
 - **Exact Line Numbers:** `WebhookController.java:77-99`; `WebhookService.java:114-121`
 - **Actual Code Behaviour:** Authentication is a constant-time comparison of a shared secret header (controller lines 77-99). There is no HMAC over the payload, no timestamp tolerance, no replay nonce table. Deduplication uses `transactionRepository.existsByDescription(description)` (lines 114-121), a string match with no DB unique constraint.
 - **Failure / Exploit Scenario:** If the secret leaks (logs, config, repo), an attacker can forge callbacks indefinitely (compounding FIN-02). Replayed callbacks are only deduplicated by a string match that can race or be bypassed by altering the description. No replay protection.
@@ -571,7 +577,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 
 ## 6. Recommended Prioritisation
 
-1. **Block live money until fixed:** FIN-01, FIN-02, FIN-04, FIN-05, SEC-01, SEC-02, SEC-03, SEC-04.
+1. **Block live money until fixed:** FIN-01, FIN-02, FIN-04, SEC-01, SEC-02, SEC-03, SEC-04. (FIN-05 mitigated in Phase 1B — the cleanup job no longer auto-fails payouts; FIN-05 remains an operational prerequisite that the reconciliation scheduler is enabled and its runbook exists.)
 2. **Fix before scaling beyond single instance:** FIN-03, FIN-06, SEC-09, SEC-11.
 3. **Fix before audit/compliance sign-off:** FIN-07, FIN-08, DB-01, SEC-07, SEC-08, SEC-10, SEC-12.
 4. **Track as roadmap items:** FIN-09, FIN-10, FIN-11, SEC-05, SEC-06, ARCH-01, ARCH-02, ARCH-03.
@@ -627,11 +633,11 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 |---|---|---|---|---|
 | FIN-01 | Direct unverified wallet deposit endpoint (arbitrary self-crediting) | Financial | Critical | TEMPORARILY DISABLED |
 | FIN-02 | Webhook collection callback trusts unverified payload amount | Financial | Critical | TEMPORARILY DISABLED |
-| FIN-03 | Payout debits wallet and calls external provider inside single `@Transactional` | Financial | High | Confirmed Vulnerability |
-| FIN-04 | Provider timeout/error during payout rolls back debit despite possible disbursement | Financial | High | Confirmed Vulnerability |
-| FIN-05 | PendingTransactionCleanupJob marks PENDING payouts FAILED without refund | Financial | High | Confirmed Vulnerability |
+| FIN-03 | Payout debits wallet and calls external provider inside single `@Transactional` | Financial | High | MITIGATED |
+| FIN-04 | Provider timeout/error during payout rolls back debit despite possible disbursement | Financial | High | MITIGATED |
+| FIN-05 | PendingTransactionCleanupJob marks PENDING payouts FAILED without refund | Financial | High | MITIGATED (Phase 1B) |
 | FIN-06 | Internal transfer acquires pessimistic locks in caller-supplied order (deadlock) | Financial | High | VERIFIED |
-| FIN-07 | BalanceRecalculationJob overwrites historical snapshots with current balance | Financial | Medium | Confirmed Defect |
+| FIN-07 | BalanceRecalculationJob overwrites historical snapshots with current balance | Financial | Medium | MITIGATED |
 | FIN-08 | Single-entry Transaction table + mutable wallets.balance instead of double-entry ledger | Financial | Medium | Design Weakness |
 | FIN-09 | Intermediate rounding to scale 2 in percentage fee calculation | Financial | Medium | Design Weakness |
 | FIN-10 | Missing payout status polling, disbursement webhook, refund/reversal workflows | Financial | Medium | Design Weakness |
@@ -640,7 +646,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 | SEC-02 | Password change / admin deactivation do not revoke refresh tokens | Security | High | Confirmed Vulnerability |
 | SEC-03 | Plaintext email-verification & password-reset tokens in Notification + logs | Security | High | Confirmed Vulnerability |
 | SEC-04 | `spring.profiles.active: dev` hardcoded as default in base application.yml | Security | High | Confirmed Misconfiguration |
-| SEC-05 | Webhook auth = static header only; no HMAC/timestamp/nonce; string-match dedup | Security | High | Design Weakness |
+| SEC-05 | Webhook auth (disbursement): Lipila HMAC + timestamp + dedup implemented; collections contained | Security | High | MITIGATED (disbursement) |
 | SEC-06 | No logout endpoint exposed despite AuthService.logout() existing | Security | Medium | Confirmed Weakness |
 | SEC-07 | Email verification token has no expiration timestamp | Security | Medium | Confirmed Weakness |
 | SEC-08 | JwtUtil does not enforce minimum key length/entropy or iss/aud claims | Security | Medium | Confirmed Weakness |

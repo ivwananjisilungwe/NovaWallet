@@ -38,3 +38,8 @@ jwt:
 app:
   admin:
     password: ${APP_ADMIN_PASSWORD}
+  scheduler:
+    # Fail-closed: reconciliation scheduler disabled in development unless
+    # explicitly enabled. The service is still exercised directly by tests.
+    payout-reconciliation:
+      enabled: false

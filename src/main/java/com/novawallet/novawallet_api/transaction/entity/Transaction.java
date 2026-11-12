@@ -51,12 +51,35 @@ public class Transaction {
     private BigDecimal balanceAfter;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 15)
+    @Column(nullable = false, length = 30)
     @Builder.Default
     private TransactionStatus status = TransactionStatus.SUCCESSFUL;
 
     @Column(length = 255)
     private String description;
+
+    // Dedicated payout data (Batch 3 B3.1) — populated for WITHDRAWAL payouts.
+    @Column(name = "provider_reference", length = 255)
+    private String providerReference;
+
+    @Column(name = "external_status", length = 50)
+    private String externalStatus;
+
+    @Column(name = "payout_account", length = 255)
+    private String payoutAccount;
+
+    @Column(name = "payout_channel", length = 50)
+    private String payoutChannel;
+
+    @Column(name = "attempt_count", nullable = false)
+    @Builder.Default
+    private Integer attemptCount = 0;
+
+    @Column(name = "next_status_check_at")
+    private LocalDateTime nextStatusCheckAt;
+
+    @Column(name = "idempotency_key", length = 255)
+    private String idempotencyKey;
 
     @Column(name = "sender_wallet_id")
     private UUID senderWalletId;

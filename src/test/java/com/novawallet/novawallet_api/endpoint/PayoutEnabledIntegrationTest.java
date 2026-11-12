@@ -115,7 +115,11 @@ class PayoutEnabledIntegrationTest extends EndpointTestSupport {
 
         payout(user, wallet)
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                // S10: provider-internal message must not leak to the client on the 400 path.
+                .andExpect(jsonPath("$.message",
+                        org.hamcrest.Matchers.not(
+                                org.hamcrest.Matchers.containsString("Insufficient merchant float"))));
 
         assertThat(walletRepository.findById(wallet.getId()).orElseThrow().getBalance())
                 .as("rejected payout must not leave a partial debit")

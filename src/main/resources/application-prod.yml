@@ -139,6 +139,17 @@ app:
   cors:
     origins: ${APP_CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
 
+  scheduler:
+    # Fail-closed defaults. Enable explicitly per environment only after
+    # confirming provider credentials and reconciliation runbook.
+    balance-recalc:
+      enabled: false
+    payout-reconciliation:
+      # Disabled by default in production. Enable ONLY when configured:
+      #   APP_SCHEDULER_PAYOUT_RECONCILIATION_ENABLED=true
+      # and after the reconciliation runbook and alerting are in place.
+      enabled: ${APP_SCHEDULER_PAYOUT_RECONCILIATION_ENABLED:false}
+
 # ── Logging — JSON format for log aggregation ────────────────────────────────
 logging:
   level:

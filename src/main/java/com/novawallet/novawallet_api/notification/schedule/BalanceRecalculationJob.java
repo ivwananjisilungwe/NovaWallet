@@ -4,6 +4,7 @@ import com.novawallet.novawallet_api.transaction.entity.Transaction;
 import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +14,11 @@ import java.util.List;
 
 /** Periodically reconciles DB balances with transaction ledger. */
 @Component
+@ConditionalOnProperty(
+        name = "app.scheduler.balance-recalc.enabled",
+        havingValue = "true",
+        matchIfMissing = false
+)
 public class BalanceRecalculationJob {
 
     private static final Logger log = LoggerFactory.getLogger(BalanceRecalculationJob.class);

@@ -99,7 +99,7 @@ Each feature package typically contains `controller/`, `service/`, `repository/`
 | 9 | `MailService` | `notification/MailService.java:14` | Verification/password-reset emails (`@Async`) |
 | 10 | `NotificationService` | `notification/service/NotificationService.java:26` | In-app notification CRUD + retry |
 | 11 | `SmsService` | `notification/service/SmsService.java:21` | Africa's Talking SMS (stub when no API key) |
-| 12 | `PayoutService` | `payment/service/PayoutService.java:61` | Mobile-money disbursement via `PaymentGateway` |
+| 12 | `PayoutService` | `payment/service/PayoutService.java:61` | Mobile-money disbursement via `PaymentGateway`; three-stage short-transaction payout (initiate → execute → finalize) with `PENDING_RECONCILIATION` status and idempotency-key support |
 | 13 | `WebhookService` | `payment/service/WebhookService.java:57` | Inbound Lipila collection callback processing |
 | 14 | `CustomUserDetailsService` | `security/CustomUserDetailsService.java:15` | Spring Security `UserDetailsService` |
 | 15 | `TokenService` | `token/service/TokenService.java:25` | Refresh-token lifecycle |
@@ -214,6 +214,20 @@ No `CHECK` constraints exist on any table: `balance >= 0` is enforced only in ap
 `TransactionService.deposit` now preserves ownership/active checks and then throws `ServiceUnavailableException`; it performs no balance update, transaction save, audit record, or notification (FIN-01 contained).
 
 This is **not** a double-entry ledger: balances are derived implicitly from transaction rows via `recalculateMissingBalances()` (job + repository), and `balance_before`/`balance_after` snapshots on `transactions` are back-filled by `TransactionRepository.recalculateMissingBalances()` when null. There is no `ledger_entries` table.
+
+### 4.7 Payout lifecycle (three-stage, Phase 1B)
+
+Payouts (`POST /api/v1/wallets/{walletId}/payouts`, `PayoutController` → `PayoutService`) use a three-stage, short-transaction pattern so no DB transaction or wallet lock is held across the external Lipila HTTP call:
+
+- **Stage A — `initiatePayout()` (`@Transactional`, short):** validates payments-enabled, wallet ownership/`ACTIVE` status (pessimistic `FOR UPDATE` lock), email verification, PIN, velocity and daily-send limits, fee; debits `wallets.balance` (`amount + fee`); persists a `PENDING` `Transaction` row (`type=WITHDRAWAL`) whose `description` embeds `[ACCT:…] [LIPILA:<providerReferenceId>] [IDEMPOTENCY:<key>]`; then **commits and releases the wallet lock**. The debit is durable once Stage A commits.
+- **Stage B — `executeDisbursement()` (no transaction):** calls `LipilaGateway.initiateDisbursement()` outside any transaction (5s connect / 10s read timeout). On a provider response it returns the `GatewayInitiationResponse`; on a transport exception `payout()` catches it, synthesises a `Pending` (uncertain) response, and **Stage C still runs** — `finalizePayout()` marks the record `PENDING_RECONCILIATION` with the Stage A debit preserved (no auto-refund; no auto-resubmit).
+- **Stage C — `finalizePayout()` (`@Transactional`, short):** reloads the payout record and settles: `Successful` → `SUCCESSFUL` + `PAYOUT_SUCCESS` audit; `Failed` → compensating credit of `amount + fee` + `FAILED` + `PAYOUT_FAILED_COMPENSATED` audit; `Pending`/uncertain → `PENDING_RECONCILIATION` (debit preserved, **no auto-refund**) + `PAYOUT_PENDING_RECONCILIATION` audit.
+
+**State machine:** `PENDING → SUCCESSFUL / FAILED / PENDING_RECONCILIATION`. `TransactionStatus.PENDING_RECONCILIATION` is a non-terminal state for uncertain/timeout outcomes resolved by Batch 3 reconciliation.
+
+**Idempotency:** clients opt in with an `Idempotency-Key` header. The `IdempotencyFilter` (after `JwtAuthFilter`) acquires a scoped key and replays cached 2xx responses; `PayoutService` additionally scans `transactions.description` for the `[IDEMPOTENCY:<key>]` marker to return an existing payout without re-debiting.
+
+**Batch 3 status:** reconciliation scheduler implemented (fail-closed by default); disbursement webhook implemented with Lipila Standard Webhooks HMAC (required), durable event-id dedup, reference/amount match, authoritative provider re-query, quarantine/deferred paths; dedicated payout columns added (V14/V15). Remaining: historical backfill of V14 columns, collection callback verified flow, production enablement of scheduler.
 
 ---
 

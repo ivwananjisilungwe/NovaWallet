@@ -1,6 +1,7 @@
 package com.novawallet.novawallet_api.user.repository;
 
 import com.novawallet.novawallet_api.kyc.enums.KycStatus;
+import com.novawallet.novawallet_api.user.entity.Role;
 import com.novawallet.novawallet_api.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -32,4 +33,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByIdIncludingDeleted(@Param("id") UUID id);
 
     List<User> findByKycStatusAndKycApprovedAtBefore(KycStatus kycStatus, LocalDateTime cutoff);
+
+    /** All users holding the given role (e.g. ADMIN for operational alerts). */
+    List<User> findByRole(Role role);
 }

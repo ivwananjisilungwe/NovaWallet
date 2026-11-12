@@ -89,6 +89,49 @@
 - Residual low security findings and out-of-scope observations are recorded in `backend-risk-register.md` §10.4.
 
 
+## Phase 1B — Safe Payout Processing (three-stage refactor)
+
+**Status:** In Progress / Batch 2 Implemented (Batch 3 planned).
+**Branch:** `feature/phase-1b-safe-payout-processing`
+
+### Objectives
+- Decouple the external Lipila HTTP call from the wallet debit transaction (address FIN-03 / FIN-04).
+- Make the wallet debit durable before the provider call; settle the outcome in a follow-up short transaction.
+- Eliminate auto-refund of uncertain amounts; route timeouts/uncertain results to `PENDING_RECONCILIATION` (Batch 3 reconciliation resolves them).
+- Add idempotency on payout initiation and payout audit events.
+
+### Batch 2 — Three-stage payout (Implemented)
+
+| Batch | Item | Status | Summary |
+|-------|------|--------|---------|
+| Batch 2.1 | Stage A — `initiatePayout()` | Implemented | Short `@Transactional` stage: payments-enabled gate, wallet ownership/`ACTIVE` (pessimistic `FOR UPDATE` lock), email verification, PIN, velocity + daily-send limits, fee calculation, wallet debit (`amount + fee`), persist `PENDING` payout row with `[LIPILA:<ref>] [IDEMPOTENCY:<key>]` description, commit + release lock. |
+| Batch 2.2 | Stage B — `executeDisbursement()` | Implemented | No-transaction stage: `LipilaGateway.initiateDisbursement()` (5s connect / 10s read timeout). Transport exception → caught by `payout()`, synthesised to `Pending` (uncertain); Stage A debit stays durable; **Stage C still runs** and marks `PENDING_RECONCILIATION` (record does **not** stay `PENDING`). |
+| Batch 2.3 | Stage C — `finalizePayout()` | Implemented | Short `@Transactional` stage: `Successful` → `SUCCESSFUL` + `PAYOUT_SUCCESS` audit; `Failed` → compensating credit of `amount + fee` + `FAILED` + `PAYOUT_FAILED_COMPENSATED` audit; `Pending`/uncertain → `PENDING_RECONCILIATION` (debit preserved, no auto-refund) + `PAYOUT_PENDING_RECONCILIATION` audit. |
+| Batch 2.4 | Idempotency | Implemented | `IdempotencyFilter` (scoped `<userId>:<key>`, response caching/replay) + `PayoutService` description-marker scan (`findByDescriptionContaining("[IDEMPOTENCY:<key>]")`) to return existing payout without re-debiting. |
+| Batch 2.5 | `TransactionStatus.PENDING_RECONCILIATION` | Implemented | New enum value added to `TransactionStatus`; gateway mapping (`PENDING`/`PENDING_RECONCILIATION` → "Pending" response status). |
+
+**Entry point:** `PayoutController.payout()` (`POST /wallets/{walletId}/payouts`, optional `Idempotency-Key` header) chains `initiatePayout → executeDisbursement → finalizePayout`.
+
+### Batch 3 — Payout hardening (Implemented, pending final acceptance)
+
+| Item | Status | Summary |
+|------|--------|---------|
+| Reconciliation scheduler | Implemented (fail-closed) | `PayoutReconciliationScheduler` + `PayoutReconciliationService`: atomic claim with 5-min lease, provider calls outside transactions, backoff ladder (1/2/5/10/30/60 min), 24h park-and-alert with dedup, exception isolation. Disabled by default (`matchIfMissing=false`); enabled per environment via `app.scheduler.payout-reconciliation.enabled`. |
+| Disbursement webhook | Implemented | `POST /api/v1/webhooks/lipila/disbursements` (HMAC per Lipila Standard Webhooks scheme, timestamp window, durable event-id dedup, reference/amount match, authoritative provider re-query, quarantine/deferred paths). HMAC required by default. |
+| Cleanup job alignment | Implemented | `PendingTransactionCleanupJob` no longer marks payouts `FAILED` without refund; routes stale payouts to reconciliation. |
+| Dedicated payout columns | Implemented (V14) | `provider_reference`, `external_status`, `payout_account`, `payout_channel`, `attempt_count`, `next_status_check_at`, `idempotency_key` columns + indexes (V14, V15). |
+| Provider webhook events | Implemented (V15) | `provider_webhook_events` table with unique `(provider, event_id)` and quarantine status. |
+
+### Verification & Acceptance Criteria
+- `./mvnw test` green; no regression in existing transfer/withdraw/deposit paths.
+- Concurrency test: N concurrent payouts on one wallet do not exhaust the connection pool; lock-hold time < 100ms.
+- Timeout test: gateway unreachable → Stage A commits (debit durable, record `PENDING`), Stage B transport exception caught and synthesised to `Pending`, Stage C runs and marks `PENDING_RECONCILIATION` (debit preserved, no auto-refund).
+- Provider-failure test: mock gateway returns `Failed` → compensating credit restores balance, row `FAILED`, audit recorded.
+- Idempotency test: repeated `Idempotency-Key` → no second debit, cached response returned.
+- Batch 3 items are explicitly **not** part of Batch 2.
+
+---
+
 ## Phase 2 — Double-Entry Accounting Ledger
 
 **Objectives**

@@ -169,7 +169,7 @@ Target: modular monolith with strict module boundaries (no cross-module reposito
 | Key classes (config) | `PaymentConfig`, `PaymentGateway`, `LipilaGateway` |
 | Owned entities / tables | None (uses Wallet & Ledger transactions; payment metadata lives in `Transaction.description` marker `[LIPILA:<ref>]`) |
 | Owned repositories | None (must stop injecting `WalletRepository`/`TransactionRepository`) |
-| Public REST APIs | `/api/v1/wallets/{walletId}/payouts`, `/api/v1/webhooks/lipila/collections` |
+| Public REST APIs | `/api/v1/wallets/{walletId}/payouts`, `/api/v1/webhooks/lipila/collections`, `/api/v1/webhooks/lipila/disbursements` |
 | Current inbound deps | Wallet & Ledger (direct repo + service injection), Identity (`AuthService`, `UserRepository`), Wallet & Ledger (`TransactionLimitService`, `FeeEngineService`) |
 | Current outbound deps | None (leaf consumer) |
 | Required decoupling actions | **Forbid direct `WalletRepository`/`TransactionRepository`/`TransactionService` access** from Payments; call Wallet & Ledger public APIs for debit/credit and transaction recording; keep gateway/webhook secret verification local; verify Lipila payload then invoke domain API. |
