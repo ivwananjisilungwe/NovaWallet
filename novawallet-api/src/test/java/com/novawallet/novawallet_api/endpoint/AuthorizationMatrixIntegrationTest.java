@@ -148,7 +148,7 @@ class AuthorizationMatrixIntegrationTest extends EndpointTestSupport {
                     .reference(reference)
                     .type(TransactionType.TRANSFER_DEBIT)
                     .amount(new BigDecimal("10.00"))
-                    .status(TransactionStatus.COMPLETED)
+                    .status(TransactionStatus.SUCCESSFUL)
                     .description("idor test")
                     .senderWalletId(ownerWallet.getId())
                     .build());

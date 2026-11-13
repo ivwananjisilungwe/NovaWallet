@@ -55,6 +55,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 | SEC-10 | Monetary DTOs validate @Positive but lack @Digits/@DecimalMax upper bounds | Security | Medium | Confirmed Weakness |
 | SEC-11 | management.info.env.enabled + public Swagger + CORS wildcard headers w/ credentials | Security | Medium | Confirmed Misconfiguration |
 | SEC-12 | RequestTracingFilter accepts unvalidated X-Request-ID; KycService trusts client MIME | Security | Low | Confirmed Weakness |
+| SEC-13 | Single ADMIN role: every admin capability (KYC, fees, wallets, users) granted to one role | Security | Medium | ACCEPTED (DEC-03) until BE-1D-07 |
 | NEW-AUTH-01 | Access tokens are not revocable before natural expiry; reuse after logout undetectable | Security | Medium | RESOLVED (Phase 1C Batch 1) |
 | ARCH-01 | Extensive cross-domain repository injection | Architectural | High | Architectural |
 | ARCH-02 | Identity and KYC state coupled in users table / JPA @ManyToOne | Architectural | High | Architectural/Database |
@@ -662,6 +663,21 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Financial / Business Consequence:** Rate limiting ineffective in production topology; brute-force/DoS exposure.
 - **Concrete Recommended Correction:** Configure `server.forward-headers-strategy=framework` (or `native`) and trust only the proxy. Either move counters to a shared store (Redis) or document single-instance deployment. Add tests with `X-Forwarded-For`.
 - **Suggested Verification Test Case:** Test: two requests with different spoofed `X-Forwarded-For` from a trusted proxy → separate buckets. Test: untrusted proxy → `remoteAddr` used. Load test across 2 instances sharing a limit.
+
+#### SEC-13 — Single ADMIN role (no separation of duties)
+
+- **Risk ID:** SEC-13
+- **Title:** All administrative capabilities are granted to one `ADMIN` role
+- **Category:** Security
+- **Severity:** Medium
+- **Verification Status:** **ACCEPTED (DEC-03, 2026-11-13)**: single ADMIN through Phase 1C; split roles are scheduled for BE-1D-07.
+- **Exact File Path(s):** `novawallet-api/src/main/java/com/novawallet/novawallet_api/config/SecurityConfig.java` (`/api/v1/admin/**` → `hasRole("ADMIN")`, added in Phase 1C Batch 2)
+- **Actual Code Behaviour:** Any account with `ADMIN` can approve/reject KYC, change fees, freeze/unfreeze wallets and manage users. There are no `SUPPORT`, `KYC_REVIEWER`, `FINANCE` or `SUPER_ADMIN` roles and no maker-checker approval.
+- **Failure / Exploit Scenario:** One compromised or malicious admin account can approve its own fraudulent KYC, change fees and unfreeze a frozen wallet without a second person.
+- **Financial / Business Consequence:** No separation of duties; insider-fraud and account-takeover blast radius is the whole admin surface.
+- **Compensating controls now:** URL-level `hasRole("ADMIN")` on `/api/v1/admin/**` in addition to method checks; admin actions write audit logs; keep the number of ADMIN accounts minimal.
+- **Correction (planned):** BE-1D-07: role split (SUPPORT / KYC_REVIEWER / FINANCE / SUPER_ADMIN), per-route role mapping, maker-checker for fee and limit changes, admin TOTP (ADM-01).
+- **Verification Test Case:** `AuthorizationMatrixIntegrationTest` asserts every `/api/v1/admin/**` route returns 403 for a customer and 401 anonymously. `RouteSecurityEnumerationTest` fails if a new unauthenticated route appears.
 
 ---
 
