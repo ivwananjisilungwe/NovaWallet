@@ -128,6 +128,25 @@ class PayoutEnabledIntegrationTest extends EndpointTestSupport {
 
     // ==================== Helpers ====================
 
+    @Test
+    @DisplayName("Batch 2 IDOR: another customer cannot pay out from someone else's wallet")
+    void payout_fromAnotherUsersWallet_isForbidden_andGatewayNotCalled() throws Exception {
+        RegisteredUser owner = registerEndpointUser("payidorowner");
+        RegisteredUser intruder = registerEndpointUser("payidorintruder");
+        verifyEmailFor(owner);
+        verifyEmailFor(intruder);
+        Wallet ownerWallet = fundedWallet(owner, "500.00");
+        setPin(intruder);
+
+        payout(intruder, ownerWallet)
+                .andExpect(status().isForbidden());
+
+        org.mockito.Mockito.verifyNoInteractions(paymentGateway);
+        assertThat(walletRepository.findById(ownerWallet.getId()).orElseThrow().getBalance())
+                .isEqualByComparingTo("500.00");
+        assertThat(transactionRowsFor(ownerWallet)).isEmpty();
+    }
+
     private Wallet fundedWallet(RegisteredUser user, String balance) {
         Wallet wallet = createWalletFor(user);
         wallet.setBalance(new BigDecimal(balance));

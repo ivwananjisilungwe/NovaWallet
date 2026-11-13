@@ -35,14 +35,14 @@ class PayoutEndpointIntegrationTest extends EndpointTestSupport {
 
     @Test
     @DisplayName("Payout requires authentication")
-    void payout_unauthenticated_returns403() throws Exception {
+    void payout_unauthenticated_returns401() throws Exception {
         RegisteredUser user = registerEndpointUser("payauth");
         var wallet = createWalletFor(user);
 
         mockMvc.perform(post("/api/v1/wallets/" + wallet.getId() + "/payouts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payoutBody()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     // ==================== Helpers ====================

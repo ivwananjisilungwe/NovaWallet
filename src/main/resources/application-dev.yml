@@ -34,6 +34,10 @@ logging:
 # real values here.
 jwt:
   secret: ${JWT_SECRET}
+  # Local-development identity for the iss/aud claims. Production takes these
+  # from the environment (application-prod.yml).
+  issuer: novawallet-api
+  audience: novawallet-client
 
 app:
   admin:

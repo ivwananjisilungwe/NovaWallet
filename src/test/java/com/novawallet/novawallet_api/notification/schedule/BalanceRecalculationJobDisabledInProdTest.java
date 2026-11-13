@@ -42,6 +42,9 @@ import static org.mockito.Mockito.verify;
         // Dummy values for production props that have no default.
         // Valid Base64 JWT secret (same value used by application-test.yml).
         "jwt.secret=dGVzdC1vbmx5LWp3dC1zZWNyZXQta2V5LWZvci1ub3Zhd2FsbGV0LWF1dG9tYXRlZC10ZXN0cy1ub3QtZm9yLXByb2R1Y3Rpb24=",
+        // iss/aud have no production defaults (DEC-10); supply test values.
+        "jwt.issuer=novawallet-api-test",
+        "jwt.audience=novawallet-client-test",
         "app.admin.password=test-admin-password-do-not-use-in-production",
         "app.kyc.upload-dir=target/test-uploads/kyc",
         "spring.mail.host=localhost",

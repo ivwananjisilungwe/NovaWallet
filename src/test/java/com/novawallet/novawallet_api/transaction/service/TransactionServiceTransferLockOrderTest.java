@@ -5,6 +5,7 @@ import com.novawallet.novawallet_api.exception.BadRequestException;
 import com.novawallet.novawallet_api.fee.enums.FeeType;
 import com.novawallet.novawallet_api.fee.service.FeeEngineService;
 import com.novawallet.novawallet_api.notification.service.NotificationService;
+import com.novawallet.novawallet_api.security.EmailVerificationPolicy;
 import com.novawallet.novawallet_api.transaction.dto.TransferRequest;
 import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
 import com.novawallet.novawallet_api.user.entity.User;
@@ -40,12 +41,13 @@ class TransactionServiceTransferLockOrderTest {
     @Mock private UserRepository userRepository;
     @Mock private TransactionLimitService transactionLimitService;
     @Mock private NotificationService notificationService;
+    @Mock private EmailVerificationPolicy emailVerificationPolicy;
 
     private TransactionService newService() {
         return new TransactionService(
                 walletRepository, transactionRepository, referenceGenerator,
                 authService, feeEngineService, auditService, userRepository,
-                transactionLimitService, notificationService);
+                transactionLimitService, notificationService, emailVerificationPolicy);
     }
 
     private void runDirection(UUID senderId, UUID receiverId, UUID userId) {
@@ -69,8 +71,6 @@ class TransactionServiceTransferLockOrderTest {
 
         when(feeEngineService.calculateFee(FeeType.TRANSFER, new BigDecimal("20.00")))
                 .thenReturn(BigDecimal.ZERO);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(
-                User.builder().id(userId).email("u@test.com").emailVerified(true).build()));
         // updateBalance returns 0 -> insufficient balance -> throws before save
         when(walletRepository.updateBalance(senderId, new BigDecimal("-20.00"))).thenReturn(0);
 

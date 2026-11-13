@@ -77,6 +77,6 @@ class PinValidationIntegrationTest extends BaseAuthIntegrationTest {
         mockMvc.perform(post("/api/v1/pin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"pin\":\"2468\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

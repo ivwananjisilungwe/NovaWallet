@@ -7,6 +7,12 @@
 **Verification statuses:** **Confirmed** (reproduced / verified by code inspection) vs **Design Weakness** (architectural concern, not a directly exploitable defect today)
 **Classification:** All credentials, secrets, tokens and sensitive values are redacted as `[REDACTED]`. No source code, tests, migrations, or configuration files were modified to produce this document.
 
+**Canonical copy (BLK-03, resolved Phase 1C Batch 1):** This file is the single canonical risk register for the backend. The copy under the workspace-root `reports/` directory is a historical Phase 0 artefact and is not updated. All corrections, status changes and new findings are applied here only. No `novawallet-api/reports/` directory exists by design.
+
+**Update convention (from Phase 1C):** The Phase 0 text is **preserved as the historical record**. Later corrections are appended as `**Phase 1C update (Batch N, <date>):**` blocks stating what was verified, what changed, and the current status. A risk moves to `RESOLVED`/`CLOSED` only when both the correction and executable verification evidence exist; a correction without a passing test remains `IN PROGRESS`. Severity may be revised downward when investigation shows the original rating overstated the defect; the original rating is always retained in the update block.
+
+**Decision references:** Phase 1C decisions are recorded in `novawallet-api/docs/phase-1c/PHASE_1C_DECISION_LOG.md`.
+
 ---
 
 ## 1. Purpose & Scope
@@ -37,18 +43,19 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 | FIN-09 | Intermediate rounding to scale 2 in percentage fee calculation | Financial | Medium | Design Weakness |
 | FIN-10 | Missing payout status polling, disbursement webhook, refund/reversal workflows | Financial | Medium | Design Weakness |
 | FIN-11 | Daily send limit per-wallet vs velocity per-user; unverified users bypass tier limits | Financial | Low | Design Weakness |
-| SEC-01 | JwtAuthFilter does not check enabled/locked/soft-delete status | Security | High | Confirmed Vulnerability |
-| SEC-02 | Password change / admin deactivation do not revoke refresh tokens | Security | High | Confirmed Vulnerability |
-| SEC-03 | Plaintext email-verification & password-reset tokens in Notification + logs | Security | High | Confirmed Vulnerability |
+| SEC-01 | JwtAuthFilter does not check enabled/locked/soft-delete status | Security | Medium | RESOLVED/CORRECTED (Phase 1C Batch 1) |
+| SEC-02 | Password change / admin deactivation do not revoke refresh tokens | Security | High | RESOLVED (Phase 1C Batch 1) |
+| SEC-03 | Plaintext email-verification & password-reset tokens in Notification + logs | Security | High | RESOLVED (Phase 1C Batch 1) |
 | SEC-04 | `spring.profiles.active: dev` hardcoded as default in base application.yml | Security | High | Confirmed Misconfiguration |
 | SEC-05 | Webhook auth (disbursement): Lipila HMAC + timestamp + dedup implemented; collections contained | Security | High | MITIGATED (disbursement) |
-| SEC-06 | No logout endpoint exposed despite AuthService.logout() existing | Security | Medium | Confirmed Weakness |
-| SEC-07 | Email verification token has no expiration timestamp | Security | Medium | Confirmed Weakness |
-| SEC-08 | JwtUtil does not enforce minimum key length/entropy or iss/aud claims | Security | Medium | Confirmed Weakness |
+| SEC-06 | No logout endpoint exposed despite AuthService.logout() existing | Security | Medium | RESOLVED (Phase 1C Batch 1) |
+| SEC-07 | Email verification token has no expiration timestamp | Security | Medium | OPEN — out of scope for Batch 1 |
+| SEC-08 | JwtUtil does not enforce minimum key length/entropy or iss/aud claims | Security | Medium | RESOLVED (Phase 1C Batch 1) |
 | SEC-09 | RateLimitFilter & LoginRateLimiter in-memory per-JVM, proxy-header unaware | Security | Medium | Design Weakness |
 | SEC-10 | Monetary DTOs validate @Positive but lack @Digits/@DecimalMax upper bounds | Security | Medium | Confirmed Weakness |
 | SEC-11 | management.info.env.enabled + public Swagger + CORS wildcard headers w/ credentials | Security | Medium | Confirmed Misconfiguration |
 | SEC-12 | RequestTracingFilter accepts unvalidated X-Request-ID; KycService trusts client MIME | Security | Low | Confirmed Weakness |
+| NEW-AUTH-01 | Access tokens are not revocable before natural expiry; reuse after logout undetectable | Security | Medium | RESOLVED (Phase 1C Batch 1) |
 | ARCH-01 | Extensive cross-domain repository injection | Architectural | High | Architectural |
 | ARCH-02 | Identity and KYC state coupled in users table / JPA @ManyToOne | Architectural | High | Architectural/Database |
 | ARCH-03 | Synchronous in-process side effects without domain events / outbox | Architectural | Medium | Architectural |
@@ -168,9 +175,10 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Concrete Recommended Correction:** Acquire locks in a canonical global order (e.g. compare wallet UUIDs and lock the lower UUID first, then the higher), independent of transfer direction. Document the ordering. Add a deadlock-retry policy at the service boundary as a safety net.
 - **Suggested Verification Test Case:** `ConcurrentTransferIntegrationTest` extended: two threads performing A→B and B→A simultaneously for N iterations; assert zero deadlocks/timeouts and final balances equal expected. Measure lock wait time.
 
-#### FIN-07 — BalanceRecalculationJob overwrites historical snapshots with current balance
+#### FIN-07 (R-02) — BalanceRecalculationJob overwrites historical snapshots with current balance
 
 - **Risk ID:** FIN-07
+- **Traceability alias:** **R-02** (used by the Phase 1C traceability matrix; same defect).
 - **Title:** `BalanceRecalculationJob` overwrites missing historical `balance_before`/`balance_after` snapshots with the wallet's current balance
 - **Category:** Financial
 - **Severity:** Medium
@@ -192,20 +200,32 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 #### SEC-01 — JwtAuthFilter does not check enabled/locked/soft-delete status
 
 - **Risk ID:** SEC-01
-- **Title:** `JwtAuthFilter` authenticates requests from valid JWTs without checking `userDetails.isEnabled()`, `isAccountNonLocked()`, or soft-delete status
+- **Title:** `JwtAuthFilter` authenticates requests from valid JWTs without explicitly checking `userDetails.isEnabled()`, `isAccountNonLocked()`, or soft-delete status
 - **Category:** Security
-- **Severity:** High
-- **Verification Status:** Confirmed Vulnerability
+- **Severity:** **Medium** (revised down from High — see the Phase 1C correction below)
+- **Verification Status:** **RESOLVED/CORRECTED (Phase 1C Batch 1)**
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/security/JwtAuthFilter.java`
-  - `novawallet-api/src/main/java/com/novawallet/novawallet_api/user/service/CustomUserDetailsService.java` (referenced)
+  - `novawallet-api/src/main/java/com/novawallet/novawallet_api/security/CustomUserDetailsService.java` (Phase 0 recorded this as `user/service/CustomUserDetailsService.java`; that path was wrong)
 - **Class & Method Name(s):** `JwtAuthFilter.doFilterInternal(...)`; `CustomUserDetailsService.loadUserById(...)`
-- **Exact Line Numbers:** `JwtAuthFilter.java:36-68`
-- **Actual Code Behaviour:** On a valid JWT, the filter loads `UserDetails` and sets the authentication in the security context (lines 45-61) without ever calling `userDetails.isEnabled()`, `isAccountNonLocked()`, `isAccountNonExpired()`, or `isCredentialsNonExpired()`. Soft-deleted/deactivated users therefore retain active API access until the JWT expires (15 min).
-- **Failure / Exploit Scenario:** An admin deactivates a compromised or terminated user; the user's already-issued access token keeps working for up to 15 minutes, allowing continued money movement and data access. Combined with SEC-02 (no refresh-token revocation), the user can also mint new access tokens.
-- **Financial / Business Consequence:** Deactivated/compromised accounts remain operable; fraud and data-exfiltration window; undermines admin freeze controls.
-- **Concrete Recommended Correction:** After `loadUserById`, check `isEnabled()` and `isAccountNonLocked()`; if false, do not set authentication (and optionally clear the context), causing downstream 401/403. Add `isAccountNonExpired`/`isCredentialsNonExpired` checks. Ensure `CustomUserDetailsService` maps soft-delete/locked flags onto the `UserDetails`.
-- **Suggested Verification Test Case:** Test: deactivate a user, use their (still-valid) access token → expect 401/403 on a protected endpoint. Test: locked user → 403. Regression test in `AdminSecurityIntegrationTest`.
+- **Exact Line Numbers:** `JwtAuthFilter.java:36-68` (Phase 0 snapshot; file rewritten in Batch 1)
+
+**Phase 0 assessment (preserved as the historical record; partly inaccurate):**
+
+> - **Actual Code Behaviour:** On a valid JWT, the filter loads `UserDetails` and sets the authentication in the security context (lines 45-61) without ever calling `userDetails.isEnabled()`, `isAccountNonLocked()`, `isAccountNonExpired()`, or `isCredentialsNonExpired()`. Soft-deleted/deactivated users therefore retain active API access until the JWT expires (15 min).
+> - **Failure / Exploit Scenario:** An admin deactivates a compromised or terminated user; the user's already-issued access token keeps working for up to 15 minutes, allowing continued money movement and data access. Combined with SEC-02 (no refresh-token revocation), the user can also mint new access tokens.
+> - **Financial / Business Consequence:** Deactivated/compromised accounts remain operable; fraud and data-exfiltration window; undermines admin freeze controls.
+> - **Concrete Recommended Correction:** After `loadUserById`, check `isEnabled()` and `isAccountNonLocked()`; if false, do not set authentication (and optionally clear the context), causing downstream 401/403. Add `isAccountNonExpired`/`isCredentialsNonExpired` checks. Ensure `CustomUserDetailsService` maps soft-delete/locked flags onto the `UserDetails`.
+> - **Suggested Verification Test Case:** Test: deactivate a user, use their (still-valid) access token → expect 401/403 on a protected endpoint. Test: locked user → 403. Regression test in `AdminSecurityIntegrationTest`.
+
+**Phase 1C verification correction (Batch 1, 2026-11-13):**
+
+- **Soft-delete was already enforced indirectly.** `User` is annotated `@SQLRestriction("deleted = false")` (`User.java:26`). `CustomUserDetailsService.loadUserById` resolves users through `UserRepository.findById`, so a soft-deleted row is invisible and raises `UsernameNotFoundException`. `JwtAuthFilter` catches that exception and leaves the request unauthenticated, so Spring Security answers **401**. The Phase 0 claim that deactivated users "retain active API access until the JWT expires" is therefore **false**: the soft-delete filter is consulted on every request, not only at token issuance.
+- **There was no locked/disabled state to check.** The `users` table has no `locked` or `disabled` column. `CustomUserDetailsService` constructs `isAccountNonLocked()`, `isAccountNonExpired()` and `isCredentialsNonExpired()` as constant `true`, and `isEnabled()` from `emailVerified`. Explicitly checking those flags in the filter would add no protection and, for `isEnabled()`, would implement the globally-enforcing option that **DEC-01 rejects**.
+- **The real defect was the email-verification guard, not account state.** Email verification was the only meaningful account-state gate, and it was duplicated across three private helpers (`TransactionService.withdraw`, `TransactionService.transfer`, `PayoutService.initiatePayout`) with no negative-test coverage. Batch 0's statement that email verification "gates nothing" is inaccurate; the helpers existed at baseline `60179fb`.
+- **Correction implemented.** All three copies were replaced by one component, `security/EmailVerificationPolicy.requireVerifiedForMoneyMovement(UUID)`, which throws `ForbiddenException` (HTTP 403) with the original message. The private helpers were deleted. The policy is deliberately **not** invoked from `JwtAuthFilter`: per DEC-01, unverified users must retain login, profile, KYC, notification and read-only access. The filter still performs DEC-02 revocation checks and DEC-10 claim validation before authenticating.
+- **Residual risk (accepted).** Enforcement is call-site based: a future money-movement endpoint that forgets to call the policy would bypass it. There is no ArchUnit or compile-time rule forcing the call. The mitigation is the single documented entry point, complete coverage of current money paths, and negative tests per path. Adding a new `locked` column without extending `CustomUserDetailsService` would also reintroduce a silent gap; that is a schema-change review obligation, recorded here.
+- **Verification evidence (Batch 1):** `EmailVerificationPolicyTest`; money-movement negative tests for withdraw, transfer and payout (unverified → 403, no balance change, no transaction row, no provider request); onboarding/read-only tests proving an unverified user can still read profile, read notifications and access KYC.
 
 #### SEC-02 — Password change / admin deactivation do not revoke refresh tokens
 
@@ -213,7 +233,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Title:** Password change and admin user deactivation do not revoke active refresh tokens
 - **Category:** Security
 - **Severity:** High
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** **RESOLVED (Phase 1C Batch 1)**
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/user/service/UserService.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/admin/service/AdminService.java`
@@ -226,13 +246,22 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Concrete Recommended Correction:** Call `refreshTokenRepository.revokeAllByUserId(userId)` in `UserService.changePassword` and `AdminService.deactivateUser`. Add a logout endpoint (SEC-06) and revoke on password reset too.
 - **Suggested Verification Test Case:** Test: change password → old refresh token rejected on `/auth/refresh` (401). Test: admin deactivates user → refresh token rejected. Add to `RefreshTokenRotationIntegrationTest`.
 
+**Phase 1C update (Batch 1, 2026-11-13) — RESOLVED:**
+
+- **Correction implemented.** `UserService.changePassword` now calls `TokenService.revokeAllUserTokens(userId)` immediately after the new password hash is persisted. `AdminService.toggleUserDeletedStatus` now calls the same method **only when the resulting state is `deleted = true`**, after the user row and audit record are saved. Reactivation deliberately does not revoke tokens.
+- **Scope boundary preserved.** Batch 1 does **not** touch the wallet freeze/unfreeze logic in `toggleUserDeletedStatus`. `R-01`/`DEC-12` remain Batch 3 work. The only change in that method is refresh-token revocation on deactivation.
+- **Password reset** already revoked all refresh tokens (`AuthService.resetPassword` → `TokenService.revokeAllUserTokens`); that behaviour is unchanged and is now covered by the consolidated tests.
+- **Existing behaviour preserved.** Refresh-token rotation and reuse detection are unchanged.
+- **Method-name correction.** The Phase 0 entry referenced `AdminService.deactivateUser(...)`. The actual method is `AdminService.toggleUserDeletedStatus(UUID, UUID)`; deactivation is the `deleted = true` branch.
+- **Verification evidence (Batch 1):** refresh-token revocation tests for password change and admin deactivation; a reactivation test asserting tokens are **not** revoked; the existing rotation/reuse suite still passes.
+
 #### SEC-03 — Plaintext email-verification & password-reset tokens in Notification + logs
 
 - **Risk ID:** SEC-03
 - **Title:** Plaintext email verification tokens and password reset tokens are embedded inside in-app `Notification` messages and exposed via `/api/v1/notifications`, and logged in full by `MailService` when SMTP is unconfigured
 - **Category:** Security
 - **Severity:** High
-- **Verification Status:** Confirmed Vulnerability
+- **Verification Status:** **RESOLVED (Phase 1C Batch 1)**
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/auth/service/AuthService.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/notification/service/MailService.java`
@@ -245,6 +274,17 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Financial / Business Consequence:** Account takeover; bypass of email-verification gate; unauthorised money movement; regulatory exposure.
 - **Concrete Recommended Correction:** Never persist tokens in notification bodies — send only a generic "check your email" message. Redact tokens from all logs (log a hash or last 4 chars only). Hash tokens at rest in the DB (store a BCrypt/SHA-256 hash, compare in constant time) and enforce single-use + expiry. Remove token from `NotificationResponse`.
 - **Suggested Verification Test Case:** Test: after registration, `GET /api/v1/notifications` body must not contain the verification token substring. Test: `MailService` log output (captured) must not contain the token. Security scan: grep for token in notification table.
+
+**Phase 1C update (Batch 1, 2026-11-13) — RESOLVED:**
+
+- **Tokens are hashed at rest.** `AuthService.register` and `AuthService.forgotPassword` generate a raw token with `TokenService.generateSecureToken()` (`SecureRandom`) and persist only `TokenService.hashToken(raw)` — SHA-256, Base64-encoded, 44 characters — in `users.verification_token` / `users.password_reset_token`. The raw value exists only in the delivered email and is never stored, logged, or returned by an API.
+- **Presentation compares hashes.** `AuthService.verifyEmail` and `AuthService.resetPassword` hash the presented token and look the user up by hash. Single use is preserved: a successful verification clears `verification_token`; a successful reset clears both the token and `password_reset_expires_at`.
+- **Notifications no longer contain tokens.** Registration records `"Please verify your email address."`; forgot-password records `"A password reset was requested for your account."`. Neither body contains a token, link, or any credential.
+- **Defence in depth on the read path.** `NotificationResponse.from` applies `SensitiveDataRedactor.redact(...)` to both subject and message, so a legacy row or a future careless writer cannot leak a credential through `GET /api/v1/notifications`. `SensitiveDataRedactor` uses precompiled patterns, is null-safe, and never throws.
+- **Logging is redacted.** In the no-SMTP path, `MailService` logs the body through `SensitiveDataRedactor.redact(body)` and labels the output as redacted. The send-failure path redacts the exception message before logging it.
+- **Pre-existing tokens are invalidated.** Tokens issued before this deployment were stored in plaintext and cannot match a hash, so they stop working. This is accepted and consistent with DEC-10's forced re-login; users re-request a verification email or password reset. No plaintext-compatibility fallback was added, because a fallback would preserve the vulnerability.
+- **Residual risk.** Hashing at rest does not bound token lifetime. Email-verification tokens still never expire (**SEC-07, explicitly out of scope for Batch 1**). A leaked hashed token is still usable indefinitely. The redactor is a best-effort safety net, not the primary control; the primary control is that tokens are no longer written to notifications or logs at all.
+- **Verification evidence (Batch 1):** `SensitiveDataRedactorTest`; `NotificationResponseTest`; mail-log capture tests asserting the raw token never appears; registration/verification and forgot/reset integration tests rewritten to read the raw token from the captured email (not from the database) and to assert the stored value is a 44-character SHA-256 Base64 hash.
 
 #### SEC-04 — `spring.profiles.active: dev` hardcoded as default
 
@@ -270,7 +310,7 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Title:** No logout endpoint exposed in `AuthController` despite `AuthService.logout()` existing
 - **Category:** Security
 - **Severity:** Medium
-- **Verification Status:** Confirmed Weakness
+- **Verification Status:** **RESOLVED (Phase 1C Batch 1)**
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/auth/controller/AuthController.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/auth/service/AuthService.java`
@@ -282,13 +322,22 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Concrete Recommended Correction:** Expose `POST /api/v1/auth/logout` (JWT-authenticated) calling `AuthService.logout(userId)`. Document token clearing on client. Add to OpenAPI.
 - **Suggested Verification Test Case:** Test: logout with valid JWT → subsequent `/auth/refresh` with the old refresh token returns 401. Test endpoint appears in Swagger and requires auth.
 
+**Phase 1C update (Batch 1, 2026-11-13) — RESOLVED:**
+
+- **Endpoint implemented.** `POST /api/v1/auth/logout` is exposed on `AuthController`, requires authentication, accepts no request body, and returns **204 No Content**. OpenAPI annotations describe the behaviour and the 401/503 responses.
+- **Server-side invalidation is real.** `AuthService.logout(UUID userId, UUID accessTokenId, Instant accessTokenExpiry)` revokes the presented access token through `AccessTokenRevocationService.revoke(...)` and then revokes all of the user's refresh tokens via `TokenService.revokeAllUserTokens(userId)`. Before Batch 1, `logout()` only revoked refresh tokens, so the current access token stayed valid for up to 15 minutes.
+- **No client-supplied identity.** `userId`, `jti` and expiry are read from the validated `JwtClaims` request attribute set by `JwtAuthFilter`. A caller cannot log out another user. A defensive `401` guard remains in the controller in case the path is ever made `permitAll`.
+- **Idempotent at the store level.** The revocation write is idempotent by primary key. A second HTTP logout with the same (now revoked) access token is rejected by the filter as unauthenticated and returns **401**, not 204 — the revoked token is deliberately indistinguishable from a missing one. Duplicate logout writes never corrupt state.
+- **Residual limitation (accepted).** Logout revokes the **presented** access token and **all** refresh tokens, but access tokens held by other active sessions of the same user remain valid for at most their remaining 15-minute lifetime. Enumerating them would require storing every issued access token, contradicting DEC-02's "store only revoked identifiers" design. A "log out all devices" capability is a future decision.
+- **Verification evidence (Batch 1):** `LogoutIntegrationTest` — 204 on success; the same access token is rejected on the next request; refresh is rejected; missing token → 401; duplicate logout → 204; user A cannot affect user B.
+
 #### SEC-07 — Email verification token has no expiration
 
 - **Risk ID:** SEC-07
 - **Title:** Email verification token has no expiration timestamp
 - **Category:** Security
 - **Severity:** Medium
-- **Verification Status:** Confirmed Weakness
+- **Verification Status:** **OPEN** — confirmed weakness; explicitly out of scope for Phase 1C Batch 1
 - **Exact File Path(s):**
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/user/entity/User.java`
   - `novawallet-api/src/main/java/com/novawallet/novawallet_api/auth/service/AuthService.java`
@@ -300,13 +349,20 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Concrete Recommended Correction:** Add `verificationTokenExpiresAt` (e.g. 24h) to `User`; set it in `register`; reject expired tokens in `verifyEmail` (400/410). Add a Flyway migration. Hash the token at rest (SEC-03).
 - **Suggested Verification Test Case:** Test: verify with an expired token → 400/410 and email remains unverified. Test: token expiry timestamp is persisted and within 24h of registration.
 
+**Phase 1C note (Batch 1, 2026-11-13) — STILL OPEN, deliberately unchanged:**
+
+- **Explicit scope boundary.** Phase 1C Batch 1 was instructed **not** to add an expiry timestamp for email-verification tokens and not to change `AuthService.verifyEmail` semantics. No `verificationTokenExpiresAt` column, migration, or validation was added. The decision is recorded in `PHASE_1C_DECISION_LOG.md` §9 (SEC-07).
+- **Do not mistake SEC-03 for a fix of SEC-07.** Batch 1 hashed verification tokens at rest (SEC-03), which removes the plaintext-disclosure path, but hashing does not bound token lifetime. A hashed token that leaks is still usable forever. The two findings are independent.
+- **Known inconsistency recorded.** `MailService.sendVerificationEmail` still tells the recipient "This link expires in 24 hours", but no expiry exists. This is a pre-existing false statement, **not** a Batch 1 regression. It must be corrected when SEC-07 is implemented — either add a 24-hour expiry to match the copy, or change the copy. Batch 1 did neither.
+- **Recommended implementation.** Add `verification_token_expires_at`, set it at registration (24 hours matches the email copy), reject expired tokens with `410 Gone` or `400 Bad Request`, and add a negative test. A migration is required after `V16` (i.e. `V17` or later if Batch 4 has not claimed it).
+
 #### SEC-08 — JwtUtil does not enforce minimum key length/entropy or iss/aud
 
 - **Risk ID:** SEC-08
 - **Title:** `JwtUtil` does not enforce minimum key length/entropy at startup or validate `iss`/`aud` claims
 - **Category:** Security
 - **Severity:** Medium
-- **Verification Status:** Confirmed Weakness
+- **Verification Status:** **RESOLVED (Phase 1C Batch 1)**
 - **Exact File Path(s):** `novawallet-api/src/main/java/com/novawallet/novawallet_api/security/JwtUtil.java`
 - **Class & Method Name(s):** `JwtUtil` (lines 13-76)
 - **Exact Line Numbers:** `JwtUtil.java:13-76`
@@ -315,6 +371,17 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Financial / Business Consequence:** Token forgery / account takeover if the secret is weak or shared across environments; cross-environment token reuse.
 - **Concrete Recommended Correction:** Add a `@PostConstruct` (or config validation) that fails startup if the key is shorter than 256 bits / low entropy. Add `iss` and `aud` claims on issue and validate them on parse. Document key rotation.
 - **Suggested Verification Test Case:** Test: boot with a 16-char secret → startup failure. Test: token without expected `iss`/`aud` → rejected. Test: token from a different issuer → 401.
+
+**Phase 1C update (Batch 1, 2026-11-13) — RESOLVED:**
+
+- **Startup key validation.** `JwtUtil` now fails construction when `jwt.secret` is blank, is not valid Base64, or decodes to fewer than 256 bits (the HS256 minimum). `Keys.hmacShaKeyFor` enforces the length; the exception is translated into an `IllegalStateException` with a message that never includes key material.
+- **Algorithm pinned to HS256.** Issuance uses `.signWith(secretKey, Jwts.SIG.HS256)`. Verification uses `sig().add(Jwts.SIG.HS256)`, so a token declaring `alg: none` or any other algorithm is rejected instead of being trusted.
+- **`iss`/`aud` required on both sides.** Every issued token carries `iss` and `aud`; parsing uses `requireIssuer(...)` and `requireAudience(...)`. There is **no** permissive fallback and no switch to disable the checks.
+- **Unique `jti`.** Every token receives `UUID.randomUUID()` as its `jti`. The value is required on parse and becomes the primary key of the revocation store (DEC-02 / NEW-AUTH-01).
+- **Parse-once claim model.** `parseToken` validates signature, algorithm, issuer, audience, expiry and required claims, then returns an immutable `JwtClaims(UUID userId, String email, String role, UUID tokenId, Instant issuedAt, Instant expiresAt)`. The filter parses once and stores the result as a request attribute; controllers do not re-parse the credential.
+- **Forced re-login accepted (DEC-10).** Enforcing `iss`/`aud` invalidates every token issued before deployment. This is intentional and recorded in the decision log; there is no dual-acceptance window. Pre-existing tokens also lack `jti` and are rejected as malformed.
+- **Residual limitation.** Key rotation is manual and there is no overlapping-key support. `JwtUtil` validates strength at startup but cannot rotate without invalidating all sessions. Recorded as a known limitation, not a Batch 1 defect.
+- **Verification evidence (Batch 1):** `JwtUtilTest` — correct claims accepted; wrong issuer, wrong audience, missing issuer/audience, `alg=none`, non-HS256, blank secret, non-Base64 secret and short secret all rejected; `jti` is unique across issuances; startup error messages contain no key material.
 
 #### SEC-10 — Monetary DTOs lack @Digits/@DecimalMax upper bounds
 
@@ -372,6 +439,38 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **Financial / Business Consequence:** Log-integrity compromise; stored malicious file content; potential XSS if files are served inline.
 - **Concrete Recommended Correction:** Validate/sanitise `X-Request-ID` (allowlist `[A-Za-z0-9-]{1,64}`, else generate a UUID). Inspect magic bytes (Apache Tika or manual) for KYC uploads and reject mismatches. Serve uploaded files with `Content-Disposition: attachment` and a safe content type.
 - **Suggested Verification Test Case:** Test: `X-Request-ID` containing newline → replaced with generated UUID; log output contains no injected newline. Test: upload a `.exe` renamed to `.pdf` → 400.
+
+#### NEW-AUTH-01 — Access tokens are not revocable before natural expiry
+
+- **Risk ID:** NEW-AUTH-01
+- **Title:** Access tokens are stateless with no `jti` and no server-side revocation store, so a token replayed after logout remains valid until it expires
+- **Category:** Security
+- **Severity:** Medium
+- **Verification Status:** **RESOLVED (Phase 1C Batch 1)**
+- **Discovered:** Phase 1C Batch 0 (not part of the original Phase 0 audit set)
+- **Exact File Path(s):**
+  - `novawallet-api/src/main/java/com/novawallet/novawallet_api/security/JwtUtil.java`
+  - `novawallet-api/src/main/java/com/novawallet/novawallet_api/security/JwtAuthFilter.java`
+  - `novawallet-api/src/main/java/com/novawallet/novawallet_api/auth/service/AuthService.java`
+  - `novawallet-api/src/main/java/com/novawallet/novawallet_api/auth/controller/AuthController.java`
+- **Class & Method Name(s):** `JwtUtil.generateToken(...)`; `JwtAuthFilter.doFilterInternal(...)`; `AuthService.logout(...)`; `AuthController`
+- **Exact Line Numbers:** Phase 0/Batch 0 snapshot — `JwtUtil.java:13-76`; `JwtAuthFilter.java:36-68`; `AuthService.java:278`
+- **Original Code Behaviour:** Access tokens were signed JWTs with no `jti` claim. There was no revocation table, no deny-list, and no logout endpoint (SEC-06). `AuthService.logout()` revoked only refresh tokens. Signature and expiry were the only invalidation mechanisms, so a captured access token worked for its full 15-minute lifetime even after the user logged out or the token was reported stolen.
+- **Failure / Exploit Scenario:** An attacker who captures a bearer token (proxy log, compromised client, shared device) can keep calling the API for up to 15 minutes after the legitimate user logs out. There is no server-side way to stop it, and no audit identifier to correlate the token with a revocation decision.
+- **Financial / Business Consequence:** A stolen token retains money-movement and data-read capability for its full lifetime; incident response cannot terminate the session; replay is undetectable.
+- **Concrete Recommended Correction (implemented):** Add a unique `jti` to every access token; persist revoked `jti` values in a durable, indexed table; check the table on every authenticated request; expose an authenticated logout endpoint; fail closed if the store is unavailable. Reject tokens that do not carry a valid `jti`.
+- **Suggested Verification Test Case:** Test: logout, then reuse the same access token → 401. Test: revoke a token directly, then call a protected endpoint → 401. Test: revocation store unavailable → 503, never 200. Test: two logouts of the same token → 204 both times. Test: a token belonging to user A cannot revoke or affect user B.
+
+**Phase 1C update (Batch 1, 2026-11-13) — RESOLVED:**
+
+- **`jti` issued and required.** `JwtUtil.generateToken` sets `UUID.randomUUID()` as the token id; `JwtUtil.parseToken` rejects a token with a missing or non-UUID `jti` as malformed.
+- **Durable revocation store.** `V16__create_revoked_access_tokens.sql` creates `revoked_access_tokens(jti UUID PK, user_id UUID NOT NULL FK → users(id), revoked_at TIMESTAMP, expires_at TIMESTAMP)` with indexes on `expires_at` (cleanup) and `user_id` (forensics). Only the identifier is stored — **never** the bearer token.
+- **Checked on every authenticated request.** `JwtAuthFilter` validates the token, checks `AccessTokenRevocationService.isRevoked(jti)` (an indexed primary-key read), and only then loads `UserDetails` and sets the `Authentication`. A revoked token leaves the request unauthenticated → 401 on protected endpoints.
+- **Fail closed.** If the revocation lookup throws, the filter writes a standard `503 SERVICE_UNAVAILABLE` JSON body and does not continue the chain. Exceptions inside a servlet filter cannot reach `@RestControllerAdvice`, so the response is written directly.
+- **Logout revokes access and refresh tokens.** `POST /api/v1/auth/logout` → 204; the presented access token is revoked first, then all refresh tokens. Idempotent: duplicate revocation is a no-op. See SEC-06.
+- **Bounded cleanup.** `RevokedAccessTokenCleanupJob` selects expired `jti` values in bounded batches ordered by `expires_at, jti` and deletes them; it is safe to run on multiple instances and is enabled by default (`app.scheduler.revoked-token-cleanup.enabled`, `matchIfMissing = true`).
+- **Residual limitations (accepted).** (1) One indexed read per authenticated request; no cache, because caching would reintroduce revocation staleness. (2) Cross-session asymmetry: logout revokes the presented access token and all refresh tokens, but other sessions' access tokens survive up to 15 minutes. (3) A revocation-store outage makes authentication return 503 — deliberate fail-closed behaviour that must be in the runbook. Full analysis: `PHASE_1C_DECISION_LOG.md` §4 and §8.
+- **Verification evidence (Batch 1):** `AccessTokenRevocationServiceTest`, `LogoutIntegrationTest`, `JwtAuthFilterFailClosedTest`, `V16RevokedAccessTokensMigrationTest`, plus PostgreSQL 16 fresh/upgrade migration verification.
 
 ### 3.3 Architectural / Database — Confirmed
 
@@ -573,14 +672,42 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 - **No source code was modified** to produce this document. Corrections are recommendations only.
 - **Secrets:** All sensitive values are represented as `[REDACTED]`; no actual credentials appear in this document.
 
+### 5.1 Phase 1C traceability identifiers (R-01, R-02, R-03)
+
+Phase 1C Batch 0 used `R-01`, `R-02` and `R-03` in its traceability matrix without defining them in this register. They are defined here so every batch references the same defects. **All three are Batch 3 corrections**; Batch 1 touches none of the underlying logic. Formal sign-off of the mapping is **DEC-04** (still open); the defects themselves are confirmed.
+
+| ID | Definition | Location | Severity | Register link | Batch |
+|---|---|---|---|---|---|
+| **R-01** | `AdminService.toggleUserDeletedStatus` mutates wallet status with no pessimistic lock and no status precondition; restoring a soft-deleted user unconditionally unfreezes the wallet, which can clear a fraud freeze. | `admin/service/AdminService.java` | High | Related to **DEC-12** | 3 |
+| **R-02** | `BalanceRecalculationJob` rewrites missing historical `balance_before`/`balance_after` snapshots with the wallet's current balance. Contained (bean absent in `prod`), not corrected. | `notification/schedule/BalanceRecalculationJob.java` | Medium | **Same defect as FIN-07** | 3 |
+| **R-03** | `AccountNumberGenerator` has a TOCTOU race: uniqueness is checked before insert, and a collision surfaces as an unhandled 500. | `account/service/AccountNumberGenerator.java` | High | Related to **DEC-05** | 3 |
+
+Notes:
+
+- `R-02` is an alias of `FIN-07`; both labels appear on that entry.
+- Batch 1's only change inside `AdminService` is refresh-token revocation on deactivation (SEC-02). It does **not** add a wallet lock or a status precondition.
+- A new `R-*` identifier must be defined here in the same change that introduces it.
+
 ---
 
 ## 6. Recommended Prioritisation
 
-1. **Block live money until fixed:** FIN-01, FIN-02, FIN-04, SEC-01, SEC-02, SEC-03, SEC-04. (FIN-05 mitigated in Phase 1B — the cleanup job no longer auto-fails payouts; FIN-05 remains an operational prerequisite that the reconciliation scheduler is enabled and its runbook exists.)
+**Updated Phase 1C Batch 1 (2026-11-13).** `SEC-01`, `SEC-02`, `SEC-03`, `SEC-06`, `SEC-08` and `NEW-AUTH-01` are resolved and removed from the live-blocking list. `SEC-07` remains open **by explicit scope decision** and is not a Batch 1 regression.
+
+1. **Block live money until fixed:** FIN-01, FIN-02, FIN-04, SEC-04.
+   - FIN-01/FIN-02 remain contained (503), not resolved: no verified collection workflow.
+   - FIN-04 remains mitigated by the three-stage payout pattern; residual reconciliation risk is Batch 3.
+   - FIN-05 is mitigated in Phase 1B (the cleanup job no longer auto-fails payouts); it remains an operational prerequisite that the reconciliation scheduler is enabled and its runbook exists.
+   - SEC-01, SEC-02 and SEC-03 were resolved in Phase 1C Batch 1 and no longer block live money.
 2. **Fix before scaling beyond single instance:** FIN-03, FIN-06, SEC-09, SEC-11.
-3. **Fix before audit/compliance sign-off:** FIN-07, FIN-08, DB-01, SEC-07, SEC-08, SEC-10, SEC-12.
-4. **Track as roadmap items:** FIN-09, FIN-10, FIN-11, SEC-05, SEC-06, ARCH-01, ARCH-02, ARCH-03.
+   - DEC-02's DB-backed revocation removes the previous single-instance limitation for logout; SEC-09 (in-memory rate limiting) still assumes one instance.
+3. **Fix before audit/compliance sign-off:** FIN-07/R-02, FIN-08, DB-01, **SEC-07**, SEC-10, SEC-12.
+   - SEC-08 resolved in Batch 1 and is removed from this tier.
+   - SEC-07 must be closed before audit sign-off: hashing tokens at rest (SEC-03) does not bound their lifetime.
+4. **Track as roadmap items:** FIN-09, FIN-10, FIN-11, SEC-05, ARCH-01, ARCH-02, ARCH-03.
+   - SEC-06 resolved in Batch 1 and is removed from the roadmap list.
+
+**Resolved in Phase 1C Batch 1:** SEC-01 (corrected/downgraded), SEC-02, SEC-03, SEC-06, SEC-08, NEW-AUTH-01.
 
 ---
 
@@ -608,18 +735,19 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 | FIN-09 | Unit + property (single rounding) | Backend |
 | FIN-10 | Integration (polling, webhook, reversal) | Backend |
 | FIN-11 | Integration (per-user aggregate limits) | Backend |
-| SEC-01 | Integration (deactivated/locked token) | Backend |
-| SEC-02 | Integration (refresh revocation) | Backend |
-| SEC-03 | Integration + log capture (token redaction) | Backend |
-| SEC-04 | Boot/profile integration | Backend/DevOps |
-| SEC-05 | Integration (HMAC, replay, tolerance) | Backend |
-| SEC-06 | Integration (logout revocation) | Backend |
-| SEC-07 | Integration (expired verification token) | Backend |
-| SEC-08 | Boot validation + JWT parse tests | Backend |
+| SEC-01 | Integration (deactivated/locked token) + unit (policy) + money-movement negatives | Backend — **Batch 1: `EmailVerificationPolicyTest`; withdraw/transfer/payout negatives; onboarding/read-only positives** |
+| SEC-02 | Integration (refresh revocation) | Backend — **Batch 1: password-change and admin-deactivation revocation; reactivation must not revoke** |
+| SEC-03 | Integration + log capture (token redaction) | Backend — **Batch 1: `SensitiveDataRedactorTest`, `NotificationResponseTest`, mail-log capture, hash-at-rest assertions** |
+| SEC-04 | Boot/profile integration | Backend/DevOps — still open |
+| SEC-05 | Integration (HMAC, replay, tolerance) | Backend — still open (disbursement mitigated; collections blocked) |
+| SEC-06 | Integration (logout revocation) | Backend — **Batch 1: `LogoutIntegrationTest`** |
+| SEC-07 | Integration (expired verification token) | Backend — **OPEN, explicitly out of scope for Batch 1** |
+| SEC-08 | Boot validation + JWT parse tests | Backend — **Batch 1: `JwtUtilTest`** |
 | SEC-09 | Integration (proxy headers, multi-instance) | Backend |
 | SEC-10 | Validation integration | Backend |
 | SEC-11 | Profile-based integration (actuator/swagger/cors) | Backend |
 | SEC-12 | Integration (log injection, magic bytes) | Backend |
+| NEW-AUTH-01 | Integration (revocation, fail-closed 503, idempotent logout) + migration test | Backend — **Batch 1: `AccessTokenRevocationServiceTest`, `JwtAuthFilterFailClosedTest`, `LogoutIntegrationTest`, `V16RevokedAccessTokensMigrationTest`; PostgreSQL 16 fresh + upgrade** |
 | ARCH-01 | ArchUnit | Backend |
 | ARCH-02 | Migration integration | Backend |
 | ARCH-03 | Integration (notification failure isolation) | Backend |
@@ -642,18 +770,19 @@ A summary risk matrix is provided at the top (§2) and repeated at the bottom (�
 | FIN-09 | Intermediate rounding to scale 2 in percentage fee calculation | Financial | Medium | Design Weakness |
 | FIN-10 | Missing payout status polling, disbursement webhook, refund/reversal workflows | Financial | Medium | Design Weakness |
 | FIN-11 | Daily send limit per-wallet vs velocity per-user; unverified users bypass tier limits | Financial | Low | Design Weakness |
-| SEC-01 | JwtAuthFilter does not check enabled/locked/soft-delete status | Security | High | Confirmed Vulnerability |
-| SEC-02 | Password change / admin deactivation do not revoke refresh tokens | Security | High | Confirmed Vulnerability |
-| SEC-03 | Plaintext email-verification & password-reset tokens in Notification + logs | Security | High | Confirmed Vulnerability |
+| SEC-01 | JwtAuthFilter does not check enabled/locked/soft-delete status | Security | Medium | RESOLVED/CORRECTED (Phase 1C Batch 1) |
+| SEC-02 | Password change / admin deactivation do not revoke refresh tokens | Security | High | RESOLVED (Phase 1C Batch 1) |
+| SEC-03 | Plaintext email-verification & password-reset tokens in Notification + logs | Security | High | RESOLVED (Phase 1C Batch 1) |
 | SEC-04 | `spring.profiles.active: dev` hardcoded as default in base application.yml | Security | High | Confirmed Misconfiguration |
 | SEC-05 | Webhook auth (disbursement): Lipila HMAC + timestamp + dedup implemented; collections contained | Security | High | MITIGATED (disbursement) |
-| SEC-06 | No logout endpoint exposed despite AuthService.logout() existing | Security | Medium | Confirmed Weakness |
-| SEC-07 | Email verification token has no expiration timestamp | Security | Medium | Confirmed Weakness |
-| SEC-08 | JwtUtil does not enforce minimum key length/entropy or iss/aud claims | Security | Medium | Confirmed Weakness |
+| SEC-06 | No logout endpoint exposed despite AuthService.logout() existing | Security | Medium | RESOLVED (Phase 1C Batch 1) |
+| SEC-07 | Email verification token has no expiration timestamp | Security | Medium | OPEN — out of scope for Batch 1 |
+| SEC-08 | JwtUtil does not enforce minimum key length/entropy or iss/aud claims | Security | Medium | RESOLVED (Phase 1C Batch 1) |
 | SEC-09 | RateLimitFilter & LoginRateLimiter in-memory per-JVM, proxy-header unaware | Security | Medium | Design Weakness |
 | SEC-10 | Monetary DTOs validate @Positive but lack @Digits/@DecimalMax upper bounds | Security | Medium | Confirmed Weakness |
 | SEC-11 | management.info.env.enabled + public Swagger + CORS wildcard headers w/ credentials | Security | Medium | Confirmed Misconfiguration |
 | SEC-12 | RequestTracingFilter accepts unvalidated X-Request-ID; KycService trusts client MIME | Security | Low | Confirmed Weakness |
+| NEW-AUTH-01 | Access tokens are not revocable before natural expiry; reuse after logout undetectable | Security | Medium | RESOLVED (Phase 1C Batch 1) |
 | ARCH-01 | Extensive cross-domain repository injection | Architectural | High | Architectural |
 | ARCH-02 | Identity and KYC state coupled in users table / JPA @ManyToOne | Architectural | High | Architectural/Database |
 | ARCH-03 | Synchronous in-process side effects without domain events / outbox | Architectural | Medium | Architectural |

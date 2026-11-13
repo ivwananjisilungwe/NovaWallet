@@ -2,6 +2,7 @@ package com.novawallet.novawallet_api.user.service;
 
 import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
 import com.novawallet.novawallet_api.exception.UnauthorizedException;
+import com.novawallet.novawallet_api.token.service.TokenService;
 import com.novawallet.novawallet_api.user.dto.request.ChangePasswordRequest;
 import com.novawallet.novawallet_api.user.dto.request.UpdateProfileRequest;
 import com.novawallet.novawallet_api.user.dto.response.UserProfileResponse;
@@ -29,10 +30,12 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final TokenService tokenService;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, TokenService tokenService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.tokenService = tokenService;
     }
 
     @Transactional(readOnly = true)
@@ -69,6 +72,7 @@ public class UserService {
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
+        tokenService.revokeAllUserTokens(userId);
         log.info("Password changed for user: {}", userId);
     }
 

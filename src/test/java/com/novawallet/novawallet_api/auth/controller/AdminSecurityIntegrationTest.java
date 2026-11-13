@@ -39,6 +39,6 @@ class AdminSecurityIntegrationTest extends BaseAuthIntegrationTest {
     @DisplayName("Reject unauthenticated request from admin endpoints")
     void shouldRejectUnauthenticatedFromAdminEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/admin/users"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

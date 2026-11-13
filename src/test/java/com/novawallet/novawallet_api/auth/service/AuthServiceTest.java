@@ -15,6 +15,7 @@ import com.novawallet.novawallet_api.security.JwtUtil;
 import com.novawallet.novawallet_api.token.entity.RefreshToken;
 import com.novawallet.novawallet_api.token.repository.RefreshTokenRepository;
 import com.novawallet.novawallet_api.token.service.TokenService;
+import com.novawallet.novawallet_api.token.service.AccessTokenRevocationService;
 import com.novawallet.novawallet_api.user.entity.Role;
 import com.novawallet.novawallet_api.user.entity.User;
 import com.novawallet.novawallet_api.user.repository.UserRepository;
@@ -30,6 +31,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -57,6 +59,8 @@ class AuthServiceTest {
     private NotificationAttemptRepository notificationAttemptRepository;
     @Mock
     private SmsService smsService;
+    @Mock
+    private AccessTokenRevocationService accessTokenRevocationService;
 
     private PasswordEncoder passwordEncoder;
     private TokenService tokenService;
@@ -88,6 +92,7 @@ class AuthServiceTest {
                 passwordEncoder,
                 jwtUtil,
                 tokenService,
+                accessTokenRevocationService,
                 mailService,
                 notificationService
         );
@@ -278,14 +283,15 @@ class AuthServiceTest {
         @Test
         void shouldVerifyEmailSuccessfully() {
             String token = "verification-token-123";
+            String tokenHash = tokenService.hashToken(token);
             User user = User.builder()
                     .id(UUID.randomUUID())
                     .email("john@example.com")
                     .emailVerified(false)
-                    .verificationToken(token)
+                    .verificationToken(tokenHash)
                     .build();
 
-            when(userRepository.findByVerificationToken(token))
+            when(userRepository.findByVerificationToken(tokenHash))
                     .thenReturn(Optional.of(user));
 
             authService.verifyEmail(token);
@@ -298,23 +304,25 @@ class AuthServiceTest {
 
         @Test
         void shouldThrowWhenTokenInvalid() {
-            when(userRepository.findByVerificationToken("invalid-token"))
+            String token = "invalid-token";
+            when(userRepository.findByVerificationToken(tokenService.hashToken(token)))
                     .thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> authService.verifyEmail("invalid-token"))
+            assertThatThrownBy(() -> authService.verifyEmail(token))
                     .isInstanceOf(BadRequestException.class);
         }
 
         @Test
         void shouldThrowWhenAlreadyVerified() {
             String token = "verified-token";
+            String tokenHash = tokenService.hashToken(token);
             User user = User.builder()
                     .id(UUID.randomUUID())
                     .emailVerified(true)
-                    .verificationToken(token)
+                    .verificationToken(tokenHash)
                     .build();
 
-            when(userRepository.findByVerificationToken(token))
+            when(userRepository.findByVerificationToken(tokenHash))
                     .thenReturn(Optional.of(user));
 
             assertThatThrownBy(() -> authService.verifyEmail(token))
@@ -366,16 +374,17 @@ class AuthServiceTest {
         @Test
         void shouldResetPasswordSuccessfully() {
             String token = "reset-token-123";
+            String tokenHash = tokenService.hashToken(token);
             UUID userId = UUID.randomUUID();
             User user = User.builder()
                     .id(userId)
                     .email("john@example.com")
                     .passwordHash(passwordEncoder.encode("OldPass123"))
-                    .passwordResetToken(token)
+                    .passwordResetToken(tokenHash)
                     .passwordResetExpiresAt(LocalDateTime.now().plusHours(1))
                     .build();
 
-            when(userRepository.findByPasswordResetToken(token))
+            when(userRepository.findByPasswordResetToken(tokenHash))
                     .thenReturn(Optional.of(user));
 
             authService.resetPassword(new ResetPasswordRequest(token, "NewPass456"));
@@ -392,13 +401,14 @@ class AuthServiceTest {
         @Test
         void shouldThrowWhenTokenExpired() {
             String token = "expired-token";
+            String tokenHash = tokenService.hashToken(token);
             User user = User.builder()
                     .id(UUID.randomUUID())
-                    .passwordResetToken(token)
+                    .passwordResetToken(tokenHash)
                     .passwordResetExpiresAt(LocalDateTime.now().minusMinutes(5))
                     .build();
 
-            when(userRepository.findByPasswordResetToken(token))
+            when(userRepository.findByPasswordResetToken(tokenHash))
                     .thenReturn(Optional.of(user));
 
             assertThatThrownBy(() ->
@@ -416,10 +426,15 @@ class AuthServiceTest {
         @Test
         void shouldRevokeAllTokens() {
             UUID userId = UUID.randomUUID();
+            UUID tokenId = UUID.randomUUID();
+            Instant expiresAt = Instant.now().plusSeconds(3600);
 
-            authService.logout(userId);
+            when(accessTokenRevocationService.revokeInCurrentTransaction(tokenId, userId, expiresAt)).thenReturn(true);
+
+            authService.logout(userId, tokenId, expiresAt);
 
             verify(refreshTokenRepository).revokeAllByUserId(userId);
+            verify(accessTokenRevocationService).revokeInCurrentTransaction(tokenId, userId, expiresAt);
         }
     }
 }

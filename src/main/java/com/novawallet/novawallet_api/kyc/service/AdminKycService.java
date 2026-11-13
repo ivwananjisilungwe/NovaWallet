@@ -110,8 +110,12 @@ public class AdminKycService {
             throw new BadRequestException("KYC is not in PENDING status. Current status: " + user.getKycStatus());
         }
 
-        // Validate tier exists
-        kycConfig.getTier(request.tier());
+        // Validate tier exists (unknown tier is a client error, not a 500)
+        try {
+            kycConfig.getTier(request.tier());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid KYC tier: " + request.tier());
+        }
 
         user.setKycStatus(KycStatus.APPROVED);
         user.setKycTier(request.tier());

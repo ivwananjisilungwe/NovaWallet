@@ -4,6 +4,7 @@ import com.novawallet.novawallet_api.exception.UnauthorizedException;
 import com.novawallet.novawallet_api.user.dto.request.ChangePasswordRequest;
 import com.novawallet.novawallet_api.user.entity.User;
 import com.novawallet.novawallet_api.user.repository.UserRepository;
+import com.novawallet.novawallet_api.token.service.TokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,8 @@ class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private TokenService tokenService;
 
     private PasswordEncoder passwordEncoder;
     private UserService userService;
@@ -36,7 +39,7 @@ class UserServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        userService = new UserService(userRepository, passwordEncoder);
+        userService = new UserService(userRepository, passwordEncoder, tokenService);
     }
 
     // ==================== Change password ====================
@@ -67,6 +70,7 @@ class UserServiceTest {
             assertThat(user.getPasswordHash()).isNotEqualTo(oldHash);
             assertThat(passwordEncoder.matches("NewPass@456", user.getPasswordHash())).isTrue();
             verify(userRepository).save(user);
+            verify(tokenService).revokeAllUserTokens(userId);
         }
 
         @Test

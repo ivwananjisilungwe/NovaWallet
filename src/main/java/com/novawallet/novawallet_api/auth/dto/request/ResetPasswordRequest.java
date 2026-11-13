@@ -10,6 +10,7 @@ public record ResetPasswordRequest(
 
         @Schema(description = "Password reset token received via email", example = "abc123-def456-ghi789")
         @NotBlank(message = "Token is required")
+        @Size(max = 256, message = "Token must be at most 256 characters")
         String token,
 
         @Schema(description = "New password (min 8 characters)", example = "NewSecurePass@456")

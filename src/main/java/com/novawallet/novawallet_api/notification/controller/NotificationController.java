@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.notification.controller;
 
+import com.novawallet.novawallet_api.config.PageRequests;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
 import com.novawallet.novawallet_api.common.dto.PagedResponse;
 import com.novawallet.novawallet_api.notification.dto.NotificationResponse;
@@ -12,7 +13,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -59,7 +59,7 @@ public class NotificationController {
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         UUID userId = extractUserId(userDetails);
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequests.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Notification> notifications = notificationService.getNotifications(userId, pageable);
         List<NotificationResponse> items = notifications.getContent().stream()
                 .map(NotificationResponse::from)

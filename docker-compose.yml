@@ -15,6 +15,8 @@
 #     DATABASE_USERNAME — novawallet
 #     DATABASE_PASSWORD — your-secure-password
 #     JWT_SECRET        — base64-encoded 256+ bit secret
+#     JWT_ISSUER        — JWT iss claim (e.g. novawallet-api)
+#     JWT_AUDIENCE      — JWT aud claim (e.g. novawallet-client)
 #     APP_ADMIN_PASSWORD — required by the prod profile even when seeding is skipped
 #
 #   Optional:
@@ -42,6 +44,9 @@ services:
 
       # JWT — must be valid base64 (JwtUtil decodes it at startup); fail fast
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (base64, 256+ bits)}
+      # iss/aud claims — required, no implicit defaults (Phase 1C, DEC-10)
+      JWT_ISSUER: ${JWT_ISSUER:?JWT_ISSUER must be set}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:?JWT_AUDIENCE must be set}
 
       # Mail (Mailpit for dev, real SMTP in production)
       SPRING_MAIL_HOST: mailpit

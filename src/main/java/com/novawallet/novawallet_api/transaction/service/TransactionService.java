@@ -11,6 +11,7 @@ import com.novawallet.novawallet_api.fee.service.FeeEngineService;
 import com.novawallet.novawallet_api.notification.entity.NotificationChannel;
 import com.novawallet.novawallet_api.notification.entity.NotificationType;
 import com.novawallet.novawallet_api.notification.service.NotificationService;
+import com.novawallet.novawallet_api.security.EmailVerificationPolicy;
 import com.novawallet.novawallet_api.transaction.dto.DepositRequest;
 import com.novawallet.novawallet_api.transaction.dto.TransactionResponse;
 import com.novawallet.novawallet_api.transaction.dto.TransferRequest;
@@ -66,6 +67,7 @@ public class TransactionService {
     private final UserRepository userRepository;
     private final TransactionLimitService transactionLimitService;
     private final NotificationService notificationService;
+    private final EmailVerificationPolicy emailVerificationPolicy;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -79,7 +81,8 @@ public class TransactionService {
             AuditService auditService,
             UserRepository userRepository,
             TransactionLimitService transactionLimitService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            EmailVerificationPolicy emailVerificationPolicy
     ) {
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
@@ -90,6 +93,7 @@ public class TransactionService {
         this.userRepository = userRepository;
         this.transactionLimitService = transactionLimitService;
         this.notificationService = notificationService;
+        this.emailVerificationPolicy = emailVerificationPolicy;
     }
 
     @CacheEvict(value = "walletBalances", key = "#walletId")
@@ -106,7 +110,7 @@ public class TransactionService {
     public TransactionResponse withdraw(UUID walletId, WithdrawRequest request, UUID userId) {
         Wallet wallet = findActiveWalletWithLock(walletId, userId);
 
-        requireVerifiedEmail(userId);
+        emailVerificationPolicy.requireVerifiedForMoneyMovement(userId);
 
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
 
@@ -239,7 +243,7 @@ public class TransactionService {
             throw new BadRequestException("Receiver wallet is not active");
         }
 
-        requireVerifiedEmail(userId);
+        emailVerificationPolicy.requireVerifiedForMoneyMovement(userId);
 
         BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
 
@@ -367,15 +371,6 @@ public class TransactionService {
     }
 
     // ==================== Private helpers ====================
-
-    private void requireVerifiedEmail(UUID userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        if (!user.isEmailVerified()) {
-            throw new ForbiddenException(
-                    "Email not verified — please verify your email before moving funds.");
-        }
-    }
 
     /**
      * Finds a wallet with PESSIMISTIC_WRITE lock and validates ownership + active status.

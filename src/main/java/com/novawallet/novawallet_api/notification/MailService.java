@@ -8,6 +8,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import com.novawallet.novawallet_api.security.SensitiveDataRedactor;
+
 import java.util.Optional;
 
 /** Email via JavaMailSender (Mailtrap in dev, SMTP in prod). */
@@ -104,10 +106,10 @@ public class MailService {
 
     private void sendEmail(String to, String subject, String body) {
         if (mailSender.isEmpty()) {
-            log.info("=== EMAIL (no SMTP configured) ===");
+            log.info("=== EMAIL (no SMTP configured — delivery skipped; body redacted) ===");
             log.info("To: {}", to);
             log.info("Subject: {}", subject);
-            log.info("Body:\n{}", body);
+            log.info("Body:\n{}", SensitiveDataRedactor.redact(body));
             log.info("=== END EMAIL ===");
             return;
         }
@@ -121,7 +123,8 @@ public class MailService {
             mailSender.get().send(message);
             log.info("Email sent to: {} (subject: {})", to, subject);
         } catch (Exception e) {
-            log.error("Failed to send email to {}: {}", to, e.getMessage());
+            log.error("Failed to send email to {}: {}", to,
+                SensitiveDataRedactor.redact(e.getMessage()));
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.admin.controller;
 
+import com.novawallet.novawallet_api.config.PageRequests;
 import com.novawallet.novawallet_api.admin.dto.AuditLogResponse;
 import com.novawallet.novawallet_api.admin.dto.FreezeWalletRequest;
 import com.novawallet.novawallet_api.admin.dto.TransactionSearchResponse;
@@ -17,7 +18,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -136,7 +136,7 @@ public class AdminWalletController {
                 statusFilter = WalletStatus.valueOf(status.toUpperCase());
             } catch (IllegalArgumentException ignored) {}
         }
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequests.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         PagedResponse<WalletAdminResponse> result = PagedResponse.from(
                 walletService.getAllWallets(pageable, statusFilter));
         return ResponseEntity.ok(ApiResponse.success(result, "Wallets retrieved"));
@@ -179,7 +179,7 @@ public class AdminWalletController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequests.of(page, size);
         PagedResponse<TransactionSearchResponse> result = PagedResponse.from(
                 adminService.searchTransactions(reference, type, status, dateFrom, dateTo, walletId, pageable));
         return ResponseEntity.ok(ApiResponse.success(result, "Transactions retrieved"));
@@ -219,7 +219,7 @@ public class AdminWalletController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequests.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         PagedResponse<AuditLogResponse> result = PagedResponse.from(
                 adminService.searchAuditLogs(entityType, action, performedBy, dateFrom, dateTo, pageable));
         return ResponseEntity.ok(ApiResponse.success(result, "Audit logs retrieved"));

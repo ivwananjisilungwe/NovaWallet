@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.admin.service;
 
+import com.novawallet.novawallet_api.token.service.TokenService;
 import com.novawallet.novawallet_api.admin.dto.AuditLogResponse;
 import com.novawallet.novawallet_api.admin.dto.TransactionSearchResponse;
 import com.novawallet.novawallet_api.admin.dto.UserSummaryResponse;
@@ -44,16 +45,19 @@ public class AdminService {
     private final TransactionRepository transactionRepository;
     private final AuditLogRepository auditLogRepository;
     private final WalletRepository walletRepository;
+    private final TokenService tokenService;
 
     public AdminService(UserRepository userRepository, AuditService auditService,
                         TransactionRepository transactionRepository,
                         AuditLogRepository auditLogRepository,
-                        WalletRepository walletRepository) {
+                        WalletRepository walletRepository,
+                        TokenService tokenService) {
         this.userRepository = userRepository;
         this.auditService = auditService;
         this.transactionRepository = transactionRepository;
         this.auditLogRepository = auditLogRepository;
         this.walletRepository = walletRepository;
+        this.tokenService = tokenService;
     }
 
     @Transactional(readOnly = true)
@@ -104,6 +108,11 @@ public class AdminService {
 
         userRepository.save(user);
         auditService.recordAction("User", userId, "USER_TOGGLE_DELETE", oldValue, newValue, adminId);
+
+        // SEC-02: Revoke refresh tokens only on deactivation, not on restore
+        if (user.isDeleted()) {
+            tokenService.revokeAllUserTokens(userId);
+        }
     }
 
     @Transactional(readOnly = true)

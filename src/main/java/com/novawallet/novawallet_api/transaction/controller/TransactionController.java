@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.transaction.controller;
 
+import com.novawallet.novawallet_api.config.PageRequests;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
 import com.novawallet.novawallet_api.common.dto.PagedResponse;
 import com.novawallet.novawallet_api.transaction.dto.DepositRequest;
@@ -16,7 +17,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -128,7 +128,7 @@ public class TransactionController {
             @AuthenticationPrincipal UserDetails userDetails) {
 
         UUID userId = UUID.fromString(userDetails.getUsername());
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequests.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         PagedResponse<TransactionResponse> result = transactionHistoryService
                 .getTransactionHistory(walletId, userId, type, status, from, to, pageable);

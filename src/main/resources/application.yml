@@ -11,6 +11,17 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
+    # Phase 1C Batch 2 (SEC-10 / mass assignment): reject unknown request fields.
+    # Provider payload DTOs opt out with @JsonIgnoreProperties(ignoreUnknown = true).
+    deserialization:
+      fail-on-unknown-properties: true
+
+  # Align the servlet multipart limit with KycService.MAX_FILE_SIZE (10 MB);
+  # Spring's 1 MB default made the service-level check unreachable.
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
 
   # Mail is not configured in dev mode — emails are logged to console
   # For production, set these via environment variables:
@@ -48,6 +59,10 @@ jwt:
   # A convenience value for local development only lives in application-dev.yml.
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:900000}
+  # Issuer and audience are mandatory claims (Phase 1C, DEC-10). No defaults:
+  # a production deployment must state who it is and who the tokens are for.
+  issuer: ${JWT_ISSUER}
+  audience: ${JWT_AUDIENCE}
 
 
 app:

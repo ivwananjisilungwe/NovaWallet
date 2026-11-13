@@ -15,14 +15,13 @@ import com.novawallet.novawallet_api.payment.dto.GatewayInitiationResponse;
 import com.novawallet.novawallet_api.payment.dto.GatewayPaymentRequest;
 import com.novawallet.novawallet_api.payment.dto.PayoutRequest;
 import com.novawallet.novawallet_api.payment.dto.PayoutResponse;
+import com.novawallet.novawallet_api.security.EmailVerificationPolicy;
 import com.novawallet.novawallet_api.transaction.entity.Transaction;
 import com.novawallet.novawallet_api.transaction.enums.TransactionStatus;
 import com.novawallet.novawallet_api.transaction.enums.TransactionType;
 import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
 import com.novawallet.novawallet_api.transaction.service.TransactionLimitService;
 import com.novawallet.novawallet_api.transaction.service.TransactionReferenceGenerator;
-import com.novawallet.novawallet_api.user.entity.User;
-import com.novawallet.novawallet_api.user.repository.UserRepository;
 import com.novawallet.novawallet_api.wallet.entity.Wallet;
 import com.novawallet.novawallet_api.wallet.entity.WalletStatus;
 import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
@@ -79,9 +78,9 @@ public class PayoutService {
     private final TransactionLimitService transactionLimitService;
     private final FeeEngineService feeEngineService;
     private final AuthService authService;
-    private final UserRepository userRepository;
     private final AuditService auditService;
     private final IdempotencyService idempotencyService;
+    private final EmailVerificationPolicy emailVerificationPolicy;
 
     /** Dedicated template for the short Stage A / Stage C transactions (bypasses self-invocation proxy issues). */
     private final TransactionTemplate transactionTemplate;
@@ -95,9 +94,9 @@ public class PayoutService {
             TransactionLimitService transactionLimitService,
             FeeEngineService feeEngineService,
             AuthService authService,
-            UserRepository userRepository,
             AuditService auditService,
             IdempotencyService idempotencyService,
+            EmailVerificationPolicy emailVerificationPolicy,
             PlatformTransactionManager transactionManager
     ) {
         this.paymentConfig = paymentConfig;
@@ -108,9 +107,9 @@ public class PayoutService {
         this.transactionLimitService = transactionLimitService;
         this.feeEngineService = feeEngineService;
         this.authService = authService;
-        this.userRepository = userRepository;
         this.auditService = auditService;
         this.idempotencyService = idempotencyService;
+        this.emailVerificationPolicy = emailVerificationPolicy;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         // Short transactions: never let a hung gateway/database call hold a connection indefinitely.
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
@@ -232,7 +231,7 @@ public class PayoutService {
             requirePaymentsEnabled();
 
             Wallet wallet = findOwnedActiveWalletWithLock(walletId, userId);
-            requireVerifiedEmail(userId);
+            emailVerificationPolicy.requireVerifiedForMoneyMovement(userId);
 
             // Storage key for the V14 transactions.idempotency_key column.
             // Scoped per user (matches the IdempotencyFilter convention
@@ -564,15 +563,6 @@ public class PayoutService {
             throw new BadRequestException("Wallet is not active");
         }
         return wallet;
-    }
-
-    private void requireVerifiedEmail(UUID userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        if (!user.isEmailVerified()) {
-            throw new ForbiddenException(
-                    "Email not verified — please verify your email before moving funds.");
-        }
     }
 
     /** Merchant-reference prefix matching the webhook routing convention. */

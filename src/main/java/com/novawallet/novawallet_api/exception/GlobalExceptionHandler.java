@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -143,6 +144,15 @@ public class GlobalExceptionHandler {
         String message = "Invalid value for parameter '" + exception.getName()
                 + "': " + exception.getValue();
         return buildResponse(HttpStatus.BAD_REQUEST, "BAD_REQUEST", message, request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.PAYLOAD_TOO_LARGE, "PAYLOAD_TOO_LARGE",
+                "Uploaded file exceeds the maximum allowed size", request);
     }
 
     @ExceptionHandler(Exception.class)

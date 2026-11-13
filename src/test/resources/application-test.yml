@@ -27,6 +27,10 @@ spring:
 # They are NOT valid for any non-test environment.
 jwt:
   secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQta2V5LWZvci1ub3Zhd2FsbGV0LWF1dG9tYXRlZC10ZXN0cy1ub3QtZm9yLXByb2R1Y3Rpb24=
+  # Test-only iss/aud values (Phase 1C, DEC-10). Deliberately distinct from the
+  # dev values where useful, and never valid outside the test profile.
+  issuer: novawallet-api-test
+  audience: novawallet-client-test
 
 app:
   admin:

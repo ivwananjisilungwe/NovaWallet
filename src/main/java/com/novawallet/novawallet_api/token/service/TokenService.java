@@ -17,7 +17,8 @@ import java.util.UUID;
 /**
  * Manages refresh token lifecycle: issuance, validation, rotation, and revocation.
  *
- * <p>Refresh tokens are stored as BCrypt hashes. Rotation ensures single-use
+ * <p>Refresh tokens are stored as SHA-256 hashes (high-entropy random tokens do
+ * not need a slow password hash). Rotation ensures single-use
  * semantics: each refresh issues a new token and revokes the old one.
  * Stolen-token detection invalidates all tokens for a user if a revoked
  * token is resubmitted. Expired tokens are cleaned by a daily job.</p>
@@ -97,5 +98,14 @@ public class TokenService {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    /**
+     * Revokes all refresh tokens for a user in the caller's current
+     * transaction. Used by logout so both revocation stores commit together.
+     */
+    @Transactional
+    public void revokeAllUserTokensInCurrentTransaction(UUID userId) {
+        refreshTokenRepository.revokeAllByUserId(userId);
     }
 }

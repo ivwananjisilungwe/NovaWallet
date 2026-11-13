@@ -7,6 +7,8 @@ import com.novawallet.novawallet_api.auth.service.AuthService;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
 import com.novawallet.novawallet_api.exception.RateLimitException;
 import com.novawallet.novawallet_api.exception.UnauthorizedException;
+import com.novawallet.novawallet_api.security.JwtAuthFilter;
+import com.novawallet.novawallet_api.security.JwtClaims;
 import com.novawallet.novawallet_api.security.LoginRateLimiter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -23,14 +25,15 @@ import org.springframework.web.bind.annotation.*;
  * REST controller for authentication operations.
  *
  * <p>Handles user registration, login, token refresh, and logout.
- * All endpoints are unauthenticated (permit-all). Rate limiting is
- * stricter on auth endpoints (10 req/min) to prevent brute-force.</p>
+ * Registration, login and refresh are unauthenticated (permit-all); logout
+ * requires a valid access token. Rate limiting is stricter on auth endpoints
+ * (10 req/min) to prevent brute-force.</p>
  *
  * @see AuthService
  */
 @RestController
 @RequestMapping("/api/v1/auth")
-@Tag(name = "Authentication", description = "User authentication endpoints — register, login, and token refresh")
+@Tag(name = "Authentication", description = "User authentication endpoints — register, login, refresh and logout")
 public class AuthController {
 
     private final AuthService authService;
@@ -124,5 +127,39 @@ public class AuthController {
         String refreshToken = authHeader.substring(7);
         AuthResponse response = authService.refreshAccessToken(refreshToken);
         return ResponseEntity.ok(ApiResponse.success(response, "Token refreshed"));
+    }
+
+    @Operation(
+            summary = "Log out",
+            description = "Revokes the access token used for this request immediately and all refresh tokens "
+                    + "owned by the user. The access token is recorded in a durable revocation store, so it "
+                    + "cannot be replayed for the remainder of its 15-minute lifetime — even after a restart "
+                    + "or on another instance. Duplicate revocation writes are idempotent; replaying an "
+                    + "already-revoked token is rejected with 401."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "204", description = "Session terminated"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "Missing, invalid or already-revoked access token"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "Revocation store unavailable — retry shortly"
+            )
+    })
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest httpRequest) {
+        JwtClaims claims = (JwtClaims) httpRequest.getAttribute(JwtAuthFilter.JWT_CLAIMS_ATTRIBUTE);
+
+        // Defensive: /auth/logout is not permit-all, so Spring Security has
+        // already rejected unauthenticated callers. This guard only protects
+        // against a future configuration change that re-opens the path.
+        if (claims == null) {
+            throw new UnauthorizedException("Authentication required");
+        }
+
+        authService.logout(claims.userId(), claims.tokenId(), claims.expiresAt());
+        return ResponseEntity.noContent().build();
     }
 }

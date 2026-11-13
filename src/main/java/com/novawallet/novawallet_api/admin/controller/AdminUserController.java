@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.admin.controller;
 
+import com.novawallet.novawallet_api.config.PageRequests;
 import com.novawallet.novawallet_api.admin.dto.UserSummaryResponse;
 import com.novawallet.novawallet_api.admin.service.AdminService;
 import com.novawallet.novawallet_api.common.dto.ApiResponse;
@@ -11,7 +12,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -60,7 +60,7 @@ public class AdminUserController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequests.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         PagedResponse<UserSummaryResponse> result = PagedResponse.from(adminService.getAllUsers(pageable));
         return ResponseEntity.ok(ApiResponse.success(result, "Users retrieved"));
     }

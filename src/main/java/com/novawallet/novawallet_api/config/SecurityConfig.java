@@ -2,6 +2,7 @@ package com.novawallet.novawallet_api.config;
 
 import com.novawallet.novawallet_api.idempotency.filter.IdempotencyFilter;
 import com.novawallet.novawallet_api.security.JwtAuthFilter;
+import com.novawallet.novawallet_api.security.RestAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -33,13 +34,16 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final IdempotencyFilter idempotencyFilter;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
 
     @Value("${app.cors.origins:}")
     private String corsOrigins;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, IdempotencyFilter idempotencyFilter) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, IdempotencyFilter idempotencyFilter,
+                          RestAuthenticationEntryPoint authenticationEntryPoint) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.idempotencyFilter = idempotencyFilter;
+        this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
     @Bean
@@ -87,6 +91,9 @@ public class SecurityConfig {
                                 )
                         ))
                 )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/v1/auth/register",
@@ -111,6 +118,10 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/info"
                         ).permitAll()
+                        // Defence in depth (Phase 1C Batch 2): admin controllers also
+                        // carry @PreAuthorize, but a URL rule guarantees a new admin
+                        // controller cannot ship unprotected. Single ADMIN role (DEC-03).
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form.disable())

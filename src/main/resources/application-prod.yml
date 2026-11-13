@@ -79,6 +79,9 @@ info:
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:900000}
+  # Mandatory iss/aud claims (Phase 1C, DEC-10) — fail fast if unset.
+  issuer: ${JWT_ISSUER}
+  audience: ${JWT_AUDIENCE}
 
 # ── Application Settings ─────────────────────────────────────────────────────
 app:

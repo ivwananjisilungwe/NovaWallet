@@ -23,6 +23,7 @@ public record RegisterRequest(
         @Schema(description = "User's email address", example = "user@example.com")
         @NotBlank(message = "Email is required")
         @Email(message = "Email must be valid")
+        @Size(max = 254, message = "Email must be at most 254 characters")
         String email,
 
         @Schema(description = "User's phone number with country code", example = "+260971234567")

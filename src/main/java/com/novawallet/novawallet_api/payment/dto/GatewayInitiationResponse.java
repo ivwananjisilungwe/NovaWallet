@@ -1,5 +1,6 @@
 package com.novawallet.novawallet_api.payment.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * {@code Successful} / {@code Failed} arriving later via callback.</p>
  */
 @Schema(description = "Gateway initiation result")
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record GatewayInitiationResponse(
 
         @Schema(description = "Merchant reference echoed back by Lipila", example = "NW:3f2c9a1e-...:8b1d-...")

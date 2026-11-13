@@ -71,6 +71,10 @@ public class FeeController {
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Amount must be greater than zero");
         }
+        // SEC-10: same monetary bounds as the money-movement DTOs (13.2, max 9999999999999.99).
+        if (amount.scale() > 2 || amount.precision() - amount.scale() > 13) {
+            throw new BadRequestException("Amount must have at most 13 integer digits and 2 decimal places");
+        }
 
         FeeEstimateResponse estimate = feeEngineService.estimateFee(feeType, amount);
         return ResponseEntity.ok(ApiResponse.success(estimate, "Fee estimate calculated"));
