@@ -1,5 +1,15 @@
 # Session handoff → opencode
 
+## UPDATE 2026-11-14 (Claude Code session) — read this first
+- **BE-1C-2 is built and tested.** Steps 1–5 of "remaining steps" below are DONE: the full suite was 361 run / 0 failures / 0 errors / 0 skipped. `RouteSecurityEnumerationTest`, `InputBoundsIntegrationTest` and `AuthorizationGapIntegrationTest` (5/0) were added, `reports/PHASE_1C_AUTHZ_MAP.md` was written (48 routes; its 6 gaps are closed by the gap test), and SEC-13 (single ADMIN, DEC-03) is in the risk register.
+- Batch report / traceability / `BE-1C-2_REPORT.md`: see `PROGRESS.md` for whether they landed.
+- **Git:** branch `feature/be-1c-2-authz` is pushed to origin. Owner rule: commit + push each finished, tested step to a feature branch, never to main.
+- **Next:** T1 independent review of BE-1C-2 (new session), then BE-1C-3. That needs owner answers to DEC-04 and DEC-11 and approval of `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_3_PLAN.md`.
+- Plan-only docs (awaiting approval): `PHASE_1C_BATCH_{3,4,6,7,8}_PLAN.md` in `novawallet-api/docs/phase-1c/`.
+- Uncommitted files NOT from that session (opencode's audit work): README.md, StartHere.md, TODO.md, HANDOFF.md, docs/PROJECT_ROADMAP.md, docs/PROJECT_STATE_AUDIT.md. Commit them yourself if you want them kept.
+
+---
+
 Written 2026-11-13 by the previous agent (Claude Code), stopped mid-prompt at the user's request.
 Start here, then read `PROGRESS.md` (same folder), root `AGENTS.md`, `novawallet-api/AGENTS.md`, and `docs/DECISIONS.md`.
 
