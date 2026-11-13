@@ -11,17 +11,17 @@ Status words: **DECIDED** (owner answered) · **IMPLEMENTED** (decided and in co
 | DEC-01 | Email-verification enforcement | A global in JWT filter · B financial-only | B | **IMPLEMENTED: B, financial-only** (`EmailVerificationPolicy`); 1C log §3 | 2026-11-13 | — |
 | DEC-02 | Access-token revocation after logout | in-memory deny-list · accept 15-min window · DB-backed store | plan said in-memory | **IMPLEMENTED: DB-backed revocation store**, fail-closed 503 (V16); 1C log §4 | 2026-11-13 | — |
 | DEC-03 | Admin role model | single ADMIN · SUPPORT / KYC_REVIEWER / FINANCE / SUPER_ADMIN | single role through BE-1C-2; roles in BE-1D-07 | **DECIDED: single ADMIN now; split roles in BE-1D-07** | | BE-1C-2, BE-1D-07, ADM-* |
-| DEC-04 | Confirm R-01/R-03 identifier meanings | confirm proposed mapping (1C log §7) · redefine | confirm | OPEN (deferred, 1C log §10.1) | | BE-1C-3 sign-off |
+| DEC-04 | Confirm R-01/R-03 identifier meanings | confirm proposed mapping (1C log §7) · redefine | confirm | **DECIDED: confirm the proposed mapping** (1C log §7: R-01 admin wallet-status mutation, R-02 snapshot rewrite, R-03 account-number race) | 2026-11-14 | BE-1C-3 sign-off |
 | DEC-05 | Duplicate financial effect (DB-29) | naive composite unique · idempotency-scoped design | idempotency-scoped | **DECIDED: idempotency-key scope (user + key per operation); no composite unique on amount/reference** | | BE-1C-3/4 |
 | DEC-06 | Audit immutability | DB revoke UPDATE/DELETE · trigger · app-only | DB-level revoke | **DECIDED: DB-level revoke of UPDATE/DELETE** (trigger fallback only if a separate migration user is impossible; report it) | | BE-1C-4, X14 |
 | DEC-07 / BLK-01 | Lipila collections signing contract | — (external document) | request from Lipila now; keep 503 guard | **BLOCKED** on Lipila docs | | BE-1C-5, PAY-03, APP-08 |
 | DEC-08 | KYC/PII retention period | — (legal) | ask Zambian counsel; no deletion until answered | OPEN / BLOCKED on counsel | | BE-1C-6 |
 | DEC-09 | Rate-limit store | in-memory per operation · shared store | in-memory, single instance documented | OPEN | | BE-1C-7 |
 | DEC-10 | Forced re-login on iss/aud rollout | accept · opt-in per env | accept | **IMPLEMENTED: accepted**; 1C log §5 | 2026-11-13 | — |
-| DEC-11 | Postgres test infra | `pgtest` profile · Testcontainers | `pgtest` | OPEN (plan recommends `pgtest`; BLK-06 resolved that way) | | BE-1C-3/4/9 |
+| DEC-11 | Postgres test infra | `pgtest` profile · Testcontainers | `pgtest` | **DECIDED: `pgtest` profile** (disposable postgres:16 container; default suite stays on H2; no Testcontainers) | 2026-11-14 | BE-1C-3/4/9 |
 | DEC-12 | Restoring a soft-deleted user clears a fraud freeze | keep · preserve freeze, explicit unfreeze | preserve freeze | **DECIDED: keep freeze + reason on restore; explicit unfreeze required** | | BE-1C-3 |
 | SEC-07 | Email-verification token expiry | close in 1C · later | close in BE-1D-02 | OPEN (excluded from 1C, 1C log §9) | | BE-1D-02 |
-| BLK-02 | R-01/R-03 undefined in register | — | see DEC-04 | OPEN | | BE-1C-3, BE-1C-9 |
+| BLK-02 | R-01/R-03 undefined in register | — | see DEC-04 | **RESOLVED by DEC-04** | | BE-1C-3, BE-1C-9 |
 | BLK-03 | Canonical risk register | — | `novawallet-api/docs/architecture/backend-risk-register.md` | **RESOLVED**; 1C log §6 | 2026-11-13 | — |
 | BLK-04 | No Java 17 runtime locally | — | never claim Java 17 runtime verification | standing limitation (local JDK is 21; CI uses Temurin 17) | | reporting |
 | BLK-05 | Local PG on 5432 unusable | — | disposable PG16 container | RESOLVED | | — |
@@ -52,6 +52,7 @@ Status words: **DECIDED** (owner answered) · **IMPLEMENTED** (decided and in co
 | DEC-32 | Public identifier for QR / lookup (design QR shows a handle `u=amara`; API has no username) | see C9 | add an optional unique handle; QR carries a server-signed opaque token, not the handle | OPEN | | BE-1D-05 |
 | DEC-33 | KYC document types (designs: NRC_FRONT/NRC_BACK; API: NATIONAL_ID/PASSPORT/SELFIE/PROOF_OF_ADDRESS) | see C7 | add NRC_FRONT and NRC_BACK; keep NATIONAL_ID readable for old rows | OPEN | | BE-1D-04, APP-06 |
 | DEC-34 | Support chat (designs: live chat O11) | in-house WebSocket · helpdesk SaaS · cases only | cases only at launch (ties to DEC-23) | OPEN | | BE-1D-12, APP-16 |
+| DEC-35 | Fee `percentage_fee` unit: fraction (0.0100 = 1%) or percent (0.0100 = 0.01%)? `FeeEngineService` divides by 100, so the V7 seeds charge 0.01% / 0.005% today (the min fee masks it) | fraction (drop /100) · percent (keep; reseed later) | — | **OPEN: owner undecided; change nothing until PAY-04** | 2026-11-14 | PAY-04, BE-1C-4 fee CHECK bound |
 
 ## 3. External dependencies
 | Item | Owner of the action | Status | Blocks |
@@ -71,3 +72,5 @@ Status words: **DECIDED** (owner answered) · **IMPLEMENTED** (decided and in co
 |---|---|
 | 2026-11-13 | Created (S0-03). DEC-24 recorded as decided (A). DEC-30…34 added from the design/API conflict review. |
 | 2026-11-13 | Owner decided DEC-03, DEC-05, DEC-06, DEC-12 (recommended options). |
+| 2026-11-14 | Owner decided DEC-04 (confirm), DEC-11 (`pgtest`); approved the BE-1C-3 plan. DEC-35 (fee unit) opened, undecided. Plan-proposed IDs in the Batch 4/6/7/8 plans (DEC-35..40, D2..D12) are NOT registered; renumber from DEC-36 when recorded. |
+| 2026-11-14 | BE-1C-3 plan decisions: D-4 → transfer/withdraw `Idempotency-Key` REQUIRED (missing → 400) with request fingerprint (mismatch → 422; migration V17); D-2 → new `FreezeReason.USER_DEACTIVATED`; D-6 → `novawallet-api/docs/architecture/financial-invariants.md`. D-3 (limit for KYC-unapproved users) stays OPEN — FIN-11 BLOCKED. |

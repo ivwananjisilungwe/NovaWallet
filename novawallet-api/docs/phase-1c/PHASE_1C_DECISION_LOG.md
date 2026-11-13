@@ -40,7 +40,7 @@ All other decisions in the plan (`DEC-03`, `DEC-06` … `DEC-09`, `DEC-11`, `DEC
 | R-02 | Balance snapshot rewrite | Defined as `BalanceRecalculationJob` historical-snapshot rewrite (FIN-07). | 3 (deferred) | **DEFINED** |
 | R-03 | Account-number generation TOCTOU | Defined as `AccountNumberGenerator` collision race. | 3 (deferred) | **DEFINED** |
 | SEC-07 | Email-verification token expiry | **Explicitly out of scope for Batch 1.** No expiry added; semantics unchanged. | — | **DEFERRED** |
-| DEC-04 | R-01/R-03 identifier confirmation | Proposed meanings recorded; formal sign-off still required before Batch 3 closes them. | 3 | **DEFERRED** |
+| DEC-04 | R-01/R-03 identifier confirmation | Owner confirmed the proposed meanings (2026-11-14). | 3 | **DECIDED** |
 | DEC-05 | DB-29 duplicate-financial-effect design | Not designed in Batch 1. | 4 | **DEFERRED** |
 
 ---
