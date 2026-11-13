@@ -133,7 +133,7 @@ Status key: OPEN / IN PROGRESS / MITIGATED / CLOSED / ACCEPTED RISK / BLOCKED.
 | SEC-06 | No logout endpoint exposed despite `AuthService.logout()` existing | M | `auth/controller/AuthController.java` | Expose `POST /api/v1/auth/logout`, JWT-authenticated, call `logout(userId)` | New: logout revokes refresh tokens; token replay after logout rejected | **OPEN** (confirmed — no mapping exists) |
 | SEC-08 | `JwtUtil` enforces no minimum key length/entropy at startup and validates no `iss`/`aud` | M | `security/JwtUtil.java` | Startup validation ≥256-bit key; add and validate `iss`/`aud`; pin algorithm on parse | New: short key fails startup; wrong `iss`/`aud` rejected; `alg=none` rejected | **OPEN** (confirmed — no validation present) |
 | SEC-09 | `RateLimitFilter` / `LoginRateLimiter` are in-memory per-JVM and use `getRemoteAddr()` without proxy awareness | M | `security/RateLimitFilter.java:86`, `security/LoginRateLimiter.java:80` | Configure `server.forward-headers-strategy`; document single-instance assumption; do **not** add Redis without approval | New: `X-Forwarded-For` behaviour test; per-instance limit documented | **OPEN** (confirmed — Caffeine + `getRemoteAddr`, no forward-headers config) |
-| SEC-10 | Monetary DTOs validate `@Positive` but lack `@Digits` / `@DecimalMax` upper bounds | M | `transaction/dto/{Deposit,Withdraw,Transfer}Request.java`, `payment/dto/PayoutRequest.java` | Add `@Digits(integer=13, fraction=2)` and `@DecimalMax`; bound narration length | New: oversized and over-precise amounts → 400 | **OPEN** (confirmed — only `@Positive`/`@NotNull` present) |
+| SEC-10 | Monetary DTOs validate `@Positive` but lack `@Digits` / `@DecimalMax` upper bounds | M | `transaction/dto/{Deposit,Withdraw,Transfer}Request.java`, `payment/dto/PayoutRequest.java` | Add `@Digits(integer=13, fraction=2)` and `@DecimalMax`; bound narration length | New: oversized and over-precise amounts → 400 | **IN PROGRESS** — amount bounds MITIGATED (`@Digits(13,2)` + `@DecimalMax` on Deposit/Withdraw/Transfer/Payout DTOs; `InputBoundsIntegrationTest#transfer_amountAboveMaximum_isBadRequest` and related, 361/0 full run). Narration length bound **not** evidenced — still OPEN. |
 | SEC-11 | `management.info.env.enabled: true`, unauthenticated `/actuator/info`, public Swagger in all profiles, CORS wildcard headers with credentials | M | `application.yml`, `config/SecurityConfig.java`, `application-prod.yml` | Disable env info in prod; restrict Swagger to non-prod; explicit origin+header allowlist | New: prod profile does not expose Swagger/info; CORS preflight rejects unknown origin | **OPEN** (partially verified — Swagger permitAll and `allowedHeaders("*")` confirmed) |
 | SEC-12 | `RequestTracingFilter` copies unvalidated `X-Request-ID` into MDC (log injection); `KycService` trusts client MIME without magic-byte inspection | L | `filter/RequestTracingFilter.java:33`, `kyc/service/KycService.java:181-186` | Allowlist `X-Request-ID` `[A-Za-z0-9-]{1,64}` else UUID; magic-byte validation on uploads | New: CRLF-injected header is rejected/sanitised; spoofed MIME rejected | **OPEN** (both confirmed in code) |
 | FIN-09 | Intermediate rounding to scale 2 in percentage fee calculation | M | `fee/service/FeeEngineService.java:51-53,68` | Round once, after flat-fee addition and clamping | New: sub-cent fee-config edge cases | **OPEN** (confirmed — `divide(...,2,HALF_EVEN)` before `+ flatFee` and before clamping; final `setScale(2)` is a no-op on 2dp values) |
@@ -141,6 +141,19 @@ Status key: OPEN / IN PROGRESS / MITIGATED / CLOSED / ACCEPTED RISK / BLOCKED.
 | R-01 | *Proposed:* administrative wallet status change can race money movement — **confirmed at `AdminService.toggleUserDeletedStatus`** | H | `admin/service/AdminService.java:72-102` | Take `findByIdWithLock` on the wallet before status mutation; assert expected prior status; keep audit | New: concurrent user-deactivation vs transfer → no invalid intermediate state | **OPEN** (defect confirmed; identifier still unconfirmed) |
 | R-02 | `BalanceRecalculationJob` rewrites historical snapshots to current balance | M | `notification/schedule/BalanceRecalculationJob.java:16-20`, `TransactionRepository.recalculateMissingBalances()` | Preserve containment; do not re-enable; prove job logic unsafe or fix by replay | `BalanceRecalculationJobDisabledInProdTest` (exists, must re-run) | **MITIGATED (containment)** — must be re-verified in Batch 3 |
 | R-03 | Account-number TOCTOU: `existsByAccountNumber()` then later INSERT; collision surfaces as unhandled 500 | H | `wallet/service/AccountNumberGenerator.java:31-40` | DB unique index authoritative; catch `DataIntegrityViolationException` and retry within a bounded loop; fail safe on exhaustion | New: concurrent wallet creation → zero duplicates persisted; collision → retry, not 500 | **OPEN** (defect confirmed; identifier still unconfirmed) |
+
+
+### 3.1 BE-1C-2 authorization evidence (no register ID in §3)
+
+These rows record executable evidence for authorization controls. No register ID exists for them in §3, so none is assigned here.
+
+| Control | Affected component | Planned action | Test evidence | Status |
+|---|---|---|---|---|
+| IDOR / ownership on walletId, reference, payout and KYC document routes | `TransactionHistoryService`, `TransactionService.findActiveWalletWithLock`, `PayoutService.findOwnedActiveWalletWithLock`, `AdminKycService` (document must belong to path user) | Prove ownership with executable tests; no code change expected | `AuthorizationMatrixIntegrationTest` (`intruder_cannotRead`, `intruder_cannotMoveMoney`, `referenceOwnership`); `PayoutEnabledIntegrationTest#payout_fromAnotherUsersWallet_isForbidden_andGatewayNotCalled`; `AuthorizationGapIntegrationTest#adminDocumentDownload_crossUserDocument_isForbidden`; 361/0 full run (`AuthorizationGapIntegrationTest` run separately, 5/0) | **MITIGATED** (verified by test; was not a defect per §5) |
+| Route-level authentication (no anonymous access to non-public routes) | `config/SecurityConfig.java` `anyRequest().authenticated()` | Enumerate every handler mapping and assert 401 for anonymous | `RouteSecurityEnumerationTest#everyNonPublicRouteRequiresAuthentication`; 361/0 full run | **MITIGATED** (verified by test) |
+| Admin URL-level protection (defence in depth) | `config/SecurityConfig.java` new `/api/v1/admin/**` → `hasRole("ADMIN")` rule, on top of class-level `@PreAuthorize` | Add URL-level rule; prove customers get 403 and anonymous gets 401 on every admin route | `AuthorizationMatrixIntegrationTest#customerGets403_anonymousGets401` (parameterised); `AuthorizationMatrixIntegrationTest#adminAllowed`; 361/0 full run | **MITIGATED** (verified by test; single `ADMIN` role per DEC-03, split roles deferred to BE-1D-07) |
+
+Batch report: `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_2_REPORT.md`. Full-suite evidence: `./mvnw -B clean test` exit 0, Tests run 361, Failures 0, Errors 0, Skipped 0 (JDK 21 runtime; Java 17 runtime not verified, BLK-04).
 
 ---
 
@@ -318,11 +331,12 @@ These are present in the register but **not** in Phase 1C scope. They must not b
 
 | Status | Count | IDs |
 |---|---|---|
-| OPEN (confirmed in code) | 14 | SEC-01, SEC-02, SEC-03, SEC-04, SEC-06, SEC-08, SEC-09, SEC-10, SEC-11, SEC-12, FIN-09, FIN-11, R-01, R-03 |
+| OPEN (confirmed in code) | 13 | SEC-01, SEC-02, SEC-03, SEC-04, SEC-06, SEC-08, SEC-09, SEC-11, SEC-12, FIN-09, FIN-11, R-01, R-03 |
+| IN PROGRESS (SEC-10: amount bounds mitigated; narration length open) | 1 | SEC-10 |
 | MITIGATED (verified, must not regress) | 1 | R-02 (containment, all profiles) |
 | MITIGATED (disbursement) / BLOCKED (collections) | 1 | SEC-05 |
 | CLOSED | 0 | — |
-| **Total in-scope IDs** | **16** | all accounted for |
+| **Total in-scope IDs** | **16** | all accounted for (§3.1 authorization rows are not register IDs and are excluded from this count) |
 
 **No risk is marked CLOSED.** Phase 1C has not yet implemented a single correction.
 
@@ -335,4 +349,5 @@ These are present in the register but **not** in Phase 1C scope. They must not b
 | Date | Change |
 |---|---|
 | 2026-11-12 | Initial Batch 0 matrix. 18 in-scope IDs extracted, 16 independently re-verified, 2 severity overrides groups applied, 2 identifier-integrity findings raised (DOC-SOT-01, RISK-ID-01). |
+| 2026-11-14 | BE-1C-2 (Batch 2). SEC-10 moved OPEN → IN PROGRESS: amount `@Digits`/`@DecimalMax` verified and tested; narration length still open. Added §3.1 evidence rows for IDOR/ownership, route authentication and admin URL-level protection. Evidence: full suite 361/0/0/0 (JDK 21); `AuthorizationGapIntegrationTest` 5/0 run separately. No risk marked CLOSED. |
 | 2026-11-12 | Financial/concurrency audit integrated. R-01 defect confirmed at `AdminService.toggleUserDeletedStatus`; R-03 TOCTOU confirmed; FIN-09 and FIN-11 confirmed by direct source read. Three subagent claims rejected after re-verification (wallet freeze/unfreeze is locked; recalc not active in dev; 175-test count not reproducible). |

@@ -8,8 +8,8 @@ Generated 2026-11-14 from source. Role model: DEC-03 = single `ADMIN` role (admi
 - **Required auth** has three values: `permitAll`, `authenticated` (SecurityConfig `anyRequest().authenticated()`), or `ROLE_ADMIN` (SecurityConfig `/api/v1/admin/**` rule plus `@PreAuthorize` where present).
 - **File paths** in the Ownership column are relative to `novawallet-api/src/main/java/com/novawallet/novawallet_api/`. `SecurityConfig` is at `config/SecurityConfig.java`.
 - **Proving tests** are named `TestClass#method`, found under `novawallet-api/src/test/java/com/novawallet/novawallet_api/`. `AuthorizationMatrixIntegrationTest#intruder_cannotRead` and similar nested-class methods are listed by method name only.
-- **Tests were not run** for this map. Every test reference is a static reference to a method in the source tree.
-- **Generic 401 coverage:** `endpoint/RouteSecurityEnumerationTest#everyNonPublicRouteRequiresAuthentication` exists in the tree (present, not run for this report). It is cited below only for the generic 401 check. Rows that cite only this test are listed as gaps for their specific behavior. `InputBoundsIntegrationTest` was not present in the tree at generation time and is not cited.
+- **Test status (updated 2026-11-14):** the cited tests were run after generation. Full suite: 361 run, 0 failures (before the gap test was added). `AuthorizationGapIntegrationTest`: 5 run, 0 failures. See `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_2_REPORT.md`.
+- **Generic 401 coverage:** `endpoint/RouteSecurityEnumerationTest#everyNonPublicRouteRequiresAuthentication` covers every non-allow-listed route anonymously. Boundary validation is covered by `endpoint/InputBoundsIntegrationTest`.
 - **Non-controller permitAll paths** (outside the 48 counted routes): `/actuator/health`, `/actuator/info`, `/api/swagger-ui/**`, `/api/swagger-ui.html`, `/api/api-docs/**`, `/webjars/**` (`config/SecurityConfig.java:111-120`).
 
 ## 1. AuthController (`/api/v1/auth`)
@@ -39,7 +39,7 @@ Generated 2026-11-14 from source. Role model: DEC-03 = single `ADMIN` role (admi
 | # | Method | Path | Required auth (set where) | Ownership (file:line) | Proving test |
 |---|---|---|---|---|---|
 | 8 | POST | /api/v1/pin | authenticated (`config/SecurityConfig.java:125`) | n/a (acts on current user: `auth/controller/PinController.java:52`) | PinValidationIntegrationTest#shouldRejectPinWithoutAuth; PinValidationIntegrationTest#shouldSetPinSuccessfully |
-| 9 | POST | /api/v1/pin/change | authenticated (`config/SecurityConfig.java:125`) | n/a (acts on current user: `auth/controller/PinController.java:77`) | **GAP** (no specific test; generic 401 only via RouteSecurityEnumerationTest) |
+| 9 | POST | /api/v1/pin/change | authenticated (`config/SecurityConfig.java:125`) | n/a (acts on current user: `auth/controller/PinController.java:77`) | AuthorizationGapIntegrationTest#pinChange_anonymous_isUnauthorized; AuthorizationGapIntegrationTest#pinChange_invalidBody_isBadRequest |
 
 ## 5. WalletController (`/api/v1/wallets`)
 
@@ -87,9 +87,9 @@ Generated 2026-11-14 from source. Role model: DEC-03 = single `ADMIN` role (admi
 
 | # | Method | Path | Required auth (set where) | Ownership (file:line) | Proving test |
 |---|---|---|---|---|---|
-| 27 | GET | /api/v1/notifications | authenticated (`config/SecurityConfig.java:125`) | Scoped by caller id: `notification/controller/NotificationController.java:61`; repository filter `notification/service/NotificationService.java:105` (`findByUserIdOrderByCreatedAtDesc`) | **GAP** (no user-scoping test; LogoutIntegrationTest#revokedTokenIsRejectedOnEveryProtectedEndpoint covers only a revoked token) |
-| 28 | GET | /api/v1/notifications/unread-count | authenticated (`config/SecurityConfig.java:125`) | Scoped by caller id: `notification/controller/NotificationController.java:94`; `notification/service/NotificationService.java:113` | **GAP** (no user-scoping test) |
-| 29 | PUT | /api/v1/notifications/read-all | authenticated (`config/SecurityConfig.java:125`) | Scoped by caller id: `notification/controller/NotificationController.java:115`; query `notification/repository/NotificationRepository.java:28` (`WHERE n.userId = :userId`) | **GAP** (no user-scoping test) |
+| 27 | GET | /api/v1/notifications | authenticated (`config/SecurityConfig.java:125`) | Scoped by caller id: `notification/controller/NotificationController.java:61`; repository filter `notification/service/NotificationService.java:105` (`findByUserIdOrderByCreatedAtDesc`) | AuthorizationGapIntegrationTest#notifications_areScopedPerUser |
+| 28 | GET | /api/v1/notifications/unread-count | authenticated (`config/SecurityConfig.java:125`) | Scoped by caller id: `notification/controller/NotificationController.java:94`; `notification/service/NotificationService.java:113` | AuthorizationGapIntegrationTest#notifications_areScopedPerUser |
+| 29 | PUT | /api/v1/notifications/read-all | authenticated (`config/SecurityConfig.java:125`) | Scoped by caller id: `notification/controller/NotificationController.java:115`; query `notification/repository/NotificationRepository.java:28` (`WHERE n.userId = :userId`) | AuthorizationGapIntegrationTest#notifications_areScopedPerUser (B read-all leaves A rows unread) |
 
 ## 11. UserController (`/api/v1/users`)
 
@@ -103,7 +103,7 @@ Generated 2026-11-14 from source. Role model: DEC-03 = single `ADMIN` role (admi
 
 | # | Method | Path | Required auth (set where) | Ownership (file:line) | Proving test |
 |---|---|---|---|---|---|
-| 33 | POST | /api/v1/kyc/documents/upload | authenticated (`config/SecurityConfig.java:125`) | n/a (acts on current user: `kyc/controller/KycController.java:67`) | **GAP** (no specific 401 or ownership test; generic 401 only via RouteSecurityEnumerationTest; KycNegativeEndpointIntegrationTest#uploadDocument_emptyFile_shouldReturnBadRequest and #uploadDocument_invalidMimeType_shouldReturnBadRequest assert validation only) |
+| 33 | POST | /api/v1/kyc/documents/upload | authenticated (`config/SecurityConfig.java:125`) | n/a (acts on current user: `kyc/controller/KycController.java:67`) | AuthorizationGapIntegrationTest#kycUpload_anonymous_isUnauthorized; KycNegativeEndpointIntegrationTest#uploadDocument_emptyFile_shouldReturnBadRequest and #uploadDocument_invalidMimeType_shouldReturnBadRequest assert validation only |
 | 34 | GET | /api/v1/kyc/status | authenticated (`config/SecurityConfig.java:125`) | n/a (acts on current user: `kyc/controller/KycController.java:89`) | KycAdminEndpointIntegrationTest#kycEndpoints_shouldSupportSubmitAndAdminApprovalFlow |
 | 35 | POST | /api/v1/kyc/submit | authenticated (`config/SecurityConfig.java:125`) | n/a (acts on current user: `kyc/controller/KycController.java:114`) | KycNegativeEndpointIntegrationTest#uploadDocument_pendingReview_shouldReturnBadRequest; KycAdminEndpointIntegrationTest#kycEndpoints_shouldSupportSubmitAndAdminApprovalFlow |
 
@@ -125,7 +125,7 @@ Class-level `@PreAuthorize("hasRole('ADMIN')")` at `admin/controller/AdminKycCon
 |---|---|---|---|---|---|
 | 39 | GET | /api/v1/admin/kyc/pending | ROLE_ADMIN (`admin/controller/AdminKycController.java:36`; `config/SecurityConfig.java:124`) | n/a (admin) | AuthorizationMatrixIntegrationTest#customerGets403_anonymousGets401; KycAdminEndpointIntegrationTest#kycEndpoints_shouldSupportSubmitAndAdminApprovalFlow |
 | 40 | GET | /api/v1/admin/kyc/{userId} | ROLE_ADMIN (`admin/controller/AdminKycController.java:36`; `config/SecurityConfig.java:124`) | n/a (admin) | AuthorizationMatrixIntegrationTest#customerGets403_anonymousGets401; KycAdminEndpointIntegrationTest#adminEndpoints_shouldCoverReviewToggleAndWalletFreezeFlow |
-| 41 | GET | /api/v1/admin/kyc/{userId}/documents/{documentId} | ROLE_ADMIN (`admin/controller/AdminKycController.java:36`; `config/SecurityConfig.java:124`) | `kyc/service/AdminKycService.java:96-98` (document must belong to the path userId) | AuthorizationMatrixIntegrationTest#customerGets403_anonymousGets401; KycAdminEndpointIntegrationTest#kycEndpoints_shouldSupportSubmitAndAdminApprovalFlow (success path). **GAP** for the user-to-document mismatch case (see Gaps). |
+| 41 | GET | /api/v1/admin/kyc/{userId}/documents/{documentId} | ROLE_ADMIN (`admin/controller/AdminKycController.java:36`; `config/SecurityConfig.java:124`) | `kyc/service/AdminKycService.java:96-98` (document must belong to the path userId) | AuthorizationMatrixIntegrationTest#customerGets403_anonymousGets401; KycAdminEndpointIntegrationTest#kycEndpoints_shouldSupportSubmitAndAdminApprovalFlow (success path). AuthorizationGapIntegrationTest#adminDocumentDownload_crossUserDocument_isForbidden (user-to-document mismatch). |
 | 42 | POST | /api/v1/admin/kyc/{userId}/approve | ROLE_ADMIN (`admin/controller/AdminKycController.java:36`; `config/SecurityConfig.java:124`) | n/a (admin) | AuthorizationMatrixIntegrationTest#customerGets403_anonymousGets401; KycAdminEndpointIntegrationTest#kycEndpoints_shouldSupportSubmitAndAdminApprovalFlow |
 | 43 | POST | /api/v1/admin/kyc/{userId}/reject | ROLE_ADMIN (`admin/controller/AdminKycController.java:36`; `config/SecurityConfig.java:124`) | n/a (admin) | AuthorizationMatrixIntegrationTest#customerGets403_anonymousGets401; KycAdminEndpointIntegrationTest#adminEndpoints_shouldCoverReviewToggleAndWalletFreezeFlow |
 
@@ -145,18 +145,18 @@ Class-level `@PreAuthorize("hasRole('ADMIN')")` at `admin/controller/AdminWallet
 
 No row lacks an ownership check where one is required. Every walletId, reference and document route resolves ownership in a service (rows 11-18, 41).
 
-Rows with no proving test for their specific behavior:
+The six gaps from the first pass of BE-1C-2 are closed by `endpoint/AuthorizationGapIntegrationTest` (5 tests). Targeted run: **Tests run: 5, Failures: 0** (`./mvnw -B test -Dtest=AuthorizationGapIntegrationTest`). This class was not part of the 361-test full run, so it is not yet in a combined full-suite result.
 
-| # | Route | Gap |
+| # | Route | Closed by |
 |---|---|---|
-| 9 | POST /api/v1/pin/change | No specific test. Only the generic 401 check in RouteSecurityEnumerationTest covers it. The contract marks it "Yes" (contract row 16), so it needs a test. |
-| 27 | GET /api/v1/notifications | No test that user B cannot read user A's notifications. |
-| 28 | GET /api/v1/notifications/unread-count | No user-scoping test. |
-| 29 | PUT /api/v1/notifications/read-all | No user-scoping test. Mark-all-read must affect only the caller's rows. |
-| 33 | POST /api/v1/kyc/documents/upload | No specific 401 test. The existing KycNegative tests assert validation errors only. |
-| 41 | GET /api/v1/admin/kyc/{userId}/documents/{documentId} | Ownership check exists (`kyc/service/AdminKycService.java:96-98`), but no test sends a document id that belongs to a different user. |
+| 9 | POST /api/v1/pin/change | AuthorizationGapIntegrationTest#pinChange_anonymous_isUnauthorized; AuthorizationGapIntegrationTest#pinChange_invalidBody_isBadRequest |
+| 27 | GET /api/v1/notifications | AuthorizationGapIntegrationTest#notifications_areScopedPerUser |
+| 28 | GET /api/v1/notifications/unread-count | AuthorizationGapIntegrationTest#notifications_areScopedPerUser |
+| 29 | PUT /api/v1/notifications/read-all | AuthorizationGapIntegrationTest#notifications_areScopedPerUser |
+| 33 | POST /api/v1/kyc/documents/upload | AuthorizationGapIntegrationTest#kycUpload_anonymous_isUnauthorized |
+| 41 | GET /api/v1/admin/kyc/{userId}/documents/{documentId} | AuthorizationGapIntegrationTest#adminDocumentDownload_crossUserDocument_isForbidden |
 
-Gap count: **6 rows** (9, 27, 28, 29, 33, 41).
+Gap count: **0 open** (6 closed). Batch report: `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_2_REPORT.md`.
 
 ## Notes (not gaps)
 

@@ -1,8 +1,10 @@
 # Session handoff → opencode
 
 ## UPDATE 2026-11-14 (Claude Code session) — read this first
-- **BE-1C-2 is built and tested.** Steps 1–5 of "remaining steps" below are DONE: the full suite was 361 run / 0 failures / 0 errors / 0 skipped. `RouteSecurityEnumerationTest`, `InputBoundsIntegrationTest` and `AuthorizationGapIntegrationTest` (5/0) were added, `reports/PHASE_1C_AUTHZ_MAP.md` was written (48 routes; its 6 gaps are closed by the gap test), and SEC-13 (single ADMIN, DEC-03) is in the risk register.
-- Batch report / traceability / `BE-1C-2_REPORT.md`: see `PROGRESS.md` for whether they landed.
+- **BE-1C-2 is built and tested.** Steps 1–5 of "remaining steps" below are DONE: the full suite is 366 run / 0 failures / 0 errors / 0 skipped (JDK 21). `RouteSecurityEnumerationTest`, `InputBoundsIntegrationTest` and `AuthorizationGapIntegrationTest` (5/0) were added, `reports/PHASE_1C_AUTHZ_MAP.md` was written (48 routes; its 6 gaps are closed by the gap test), and SEC-13 (single ADMIN, DEC-03) is in the risk register.
+- Reports done: `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_2_REPORT.md`, `reports/opencode/BE-1C-2_REPORT.md`, traceability matrix (SEC-10 → IN PROGRESS).
+- **Decision needed (found by the Batch 4 plan, verified):** fee percentage unit. `percentage_fee` is DECIMAL(5,4), seeds 0.0100/0.0050, and `FeeEngineService` divides by 100, so seeded rates are 0.01%/0.005%, not 1%/0.5%. The min fee masks it. The owner must confirm which is intended. Also note that the BE-1C-2 CreateFee bound is ≤ 1.0000.
+- Proposed decision IDs collide: the Batch 3, 4 and 6 plans each proposed their own DEC-35..40. Renumber when recording in `docs/DECISIONS.md`.
 - **Git:** branch `feature/be-1c-2-authz` is pushed to origin. Owner rule: commit + push each finished, tested step to a feature branch, never to main.
 - **Next:** T1 independent review of BE-1C-2 (new session), then BE-1C-3. That needs owner answers to DEC-04 and DEC-11 and approval of `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_3_PLAN.md`.
 - Plan-only docs (awaiting approval): `PHASE_1C_BATCH_{3,4,6,7,8}_PLAN.md` in `novawallet-api/docs/phase-1c/`.
