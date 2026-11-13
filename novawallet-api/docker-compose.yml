@@ -1,0 +1,119 @@
+# =============================================================================
+# NovaWallet API — Docker Compose
+#
+# Quick start:
+#   docker compose up -d
+#
+# Services:
+#   api      — Spring Boot application (port 8080)
+#   db       — PostgreSQL 16 (port 5432)
+#   mailpit  — Email testing UI (port 8025 web, 1025 SMTP)
+#
+# Environment variables for the API service:
+#   Required:
+#     DATABASE_URL      — jdbc:postgresql://db:5432/novawallet
+#     DATABASE_USERNAME — novawallet
+#     DATABASE_PASSWORD — your-secure-password
+#     JWT_SECRET        — base64-encoded 256+ bit secret
+#     JWT_ISSUER        — JWT iss claim (e.g. novawallet-api)
+#     JWT_AUDIENCE      — JWT aud claim (e.g. novawallet-client)
+#     APP_ADMIN_PASSWORD — required by the prod profile even when seeding is skipped
+#
+#   Optional:
+#     APP_MAIL_FROM     — noreply@novawallet.com
+#     APP_SMS_API_KEY   — Africa's Talking API key (stub if empty)
+#     APP_CORS_ORIGINS  — Comma-separated allowed origins
+#     TZ                — Timezone (default: Africa/Lusaka)
+# =============================================================================
+
+services:
+
+  # ── API ────────────────────────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: novawallet-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Database
+      DATABASE_URL: jdbc:postgresql://db:5432/novawallet
+      DATABASE_USERNAME: novawallet
+      # Required — fail fast (no known default in production)
+      DATABASE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+
+      # JWT — must be valid base64 (JwtUtil decodes it at startup); fail fast
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (base64, 256+ bits)}
+      # iss/aud claims — required, no implicit defaults (Phase 1C, DEC-10)
+      JWT_ISSUER: ${JWT_ISSUER:?JWT_ISSUER must be set}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:?JWT_AUDIENCE must be set}
+
+      # Mail (Mailpit for dev, real SMTP in production)
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: 1025
+      SPRING_MAIL_USERNAME: ""
+      SPRING_MAIL_PASSWORD: ""
+
+      # Admin seed (first-run only) — password is required, fail fast
+      APP_ADMIN_EMAIL: ${APP_ADMIN_EMAIL:-admin@novawallet.com}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?APP_ADMIN_PASSWORD must be set}
+
+      # SMS (stub mode if empty)
+      APP_SMS_API_KEY: ${APP_SMS_API_KEY:-}
+
+      # CORS
+      APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+
+      # Timezone
+      TZ: Africa/Lusaka
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    volumes:
+      - kyc-uploads:/app/uploads
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  # ── Database ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: novawallet-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: novawallet
+      POSTGRES_USER: novawallet
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      TZ: Africa/Lusaka
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novawallet -d novawallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Mailpit (Dev Email Testing) ────────────────────────────────────────────
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: novawallet-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # Web UI
+      # SMTP port 1025 is internal (not exposed to host)
+    profiles:
+      - dev  # Only starts with: docker compose --profile dev up
+
+volumes:
+  postgres-data:
+    name: novawallet-postgres-data
+  kyc-uploads:
+    name: novawallet-kyc-uploads

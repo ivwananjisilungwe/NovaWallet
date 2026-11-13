@@ -1,0 +1,79 @@
+# ---- Secrets / env ----
+.env
+.env.*
+!.env.example
+!**/*.example
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+key.properties
+google-services.json
+GoogleService-Info.plist
+
+# ---- Java / Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.properties
+*.class
+hs_err_pid*
+
+# ---- Build output (general) ----
+build/
+dist/
+out/
+coverage/
+
+# ---- Flutter / Dart ----
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+**/android/.gradle/
+**/android/local.properties
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Generated.xcconfig
+*.g.dart.tmp
+
+# ---- Node / Vite ----
+node_modules/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- IDEs / OS ----
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/*
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+.factorypath
+.DS_Store
+Thumbs.db
+
+# ---- Runtime data ----
+uploads/
+**/uploads/
+*.log
+*.log.*
+logs/
+
+# ---- Agent scratch ----
+.omo/
+.opencode/
+session-ses_*.md
+*.bak
+
+# ---- Prompt-pack snapshot (duplicate of repo root; do not push) ----
+prompts/NovaWallet/
+
+# ---- Large originals (designs already unpacked in docs/v5) ----
+Designs/*.zip

@@ -1,0 +1,49 @@
+spring:
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/novawallet
+    username: postgres
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+    show-sql: true
+
+    properties:
+      hibernate:
+        format_sql: true
+
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+
+# ── DEV CREDENTIALS (no insecure fallbacks) ────────────────────────────────
+# All secrets must be supplied via environment variables (see
+# novawallet-api/.env.example). There are no insecure defaults in any profile;
+# the application fails fast if a required secret is missing. Never commit
+# real values here.
+jwt:
+  secret: ${JWT_SECRET}
+  # Local-development identity for the iss/aud claims. Production takes these
+  # from the environment (application-prod.yml).
+  issuer: novawallet-api
+  audience: novawallet-client
+
+app:
+  admin:
+    password: ${APP_ADMIN_PASSWORD}
+  scheduler:
+    # Fail-closed: reconciliation scheduler disabled in development unless
+    # explicitly enabled. The service is still exercised directly by tests.
+    payout-reconciliation:
+      enabled: false

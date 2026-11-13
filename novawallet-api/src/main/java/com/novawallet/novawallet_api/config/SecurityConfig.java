@@ -1,0 +1,166 @@
+package com.novawallet.novawallet_api.config;
+
+import com.novawallet.novawallet_api.idempotency.filter.IdempotencyFilter;
+import com.novawallet.novawallet_api.security.JwtAuthFilter;
+import com.novawallet.novawallet_api.security.RestAuthenticationEntryPoint;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter;
+import org.springframework.security.web.header.writers.ContentSecurityPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+
+import java.util.List;
+
+/** Spring Security: JWT auth, endpoint rules, CORS, security headers. */
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+public class SecurityConfig {
+
+    private final JwtAuthFilter jwtAuthFilter;
+    private final IdempotencyFilter idempotencyFilter;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
+
+    @Value("${app.cors.origins:}")
+    private String corsOrigins;
+
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, IdempotencyFilter idempotencyFilter,
+                          RestAuthenticationEntryPoint authenticationEntryPoint) {
+        this.jwtAuthFilter = jwtAuthFilter;
+        this.idempotencyFilter = idempotencyFilter;
+        this.authenticationEntryPoint = authenticationEntryPoint;
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
+        http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.sameOrigin())
+                        .contentTypeOptions(contentType -> {})
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000)
+                        )
+                        .xssProtection(xss -> xss
+                                .headerValue(XXssProtectionHeaderWriter.HeaderValue.ENABLED_MODE_BLOCK)
+                        )
+                        // Swagger UI needs its JS/CSS/images — the strict API CSP
+                        // (default-src 'none' + sandbox) would block them all,
+                        // rendering a blank page. Apply a same-origin CSP to the
+                        // swagger-ui paths only.
+                        .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
+                                new OrRequestMatcher(
+                                        new AntPathRequestMatcher("/api/swagger-ui/**"),
+                                        new AntPathRequestMatcher("/api/swagger-ui.html")
+                                ),
+                                new ContentSecurityPolicyHeaderWriter(
+                                        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                                                + "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                                                + "font-src 'self' data:; frame-ancestors 'self'; "
+                                                + "base-uri 'self'; form-action 'self'"
+                                )
+                        ))
+                        .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
+                                new NegatedRequestMatcher(new OrRequestMatcher(
+                                        new AntPathRequestMatcher("/api/swagger-ui/**"),
+                                        new AntPathRequestMatcher("/api/swagger-ui.html")
+                                )),
+                                new ContentSecurityPolicyHeaderWriter(
+                                        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; sandbox"
+                                )
+                        ))
+                )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                )
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/api/v1/auth/register",
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/password/forgot",
+                                "/api/v1/password/reset",
+                                "/api/v1/email/verify"
+                        ).permitAll()
+                        // Payment-gateway webhooks: no user context exists, so the
+                        // shared-secret header (constant-time verified in
+                        // WebhookController) is the authentication. Payouts remain
+                        // authenticated — only this inbound callback path is open.
+                        .requestMatchers("/api/v1/webhooks/lipila/**").permitAll()
+                        .requestMatchers(
+                                "/api/swagger-ui/**",
+                                "/api/swagger-ui.html",
+                                "/api/api-docs/**",
+                                "/webjars/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/info"
+                        ).permitAll()
+                        // Defence in depth (Phase 1C Batch 2): admin controllers also
+                        // carry @PreAuthorize, but a URL rule guarantees a new admin
+                        // controller cannot ship unprotected. Single ADMIN role (DEC-03).
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .anyRequest().authenticated()
+                )
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(idempotencyFilter, JwtAuthFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        // Use config property if set (from env var in production), fall back to dev defaults
+        if (corsOrigins != null && !corsOrigins.isBlank()) {
+            configuration.setAllowedOrigins(List.of(corsOrigins.split(",")));
+        } else {
+            configuration.setAllowedOrigins(List.of(
+                    "http://localhost:3000",   // React dev server
+                    "http://localhost:5173",   // Vite dev server
+                    "http://localhost:8100",   // Ionic dev server (Flutter web alternative)
+                    "capacitor://localhost"    // Capacitor (mobile webview)
+            ));
+        }
+
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
+        configuration.setExposedHeaders(List.of(
+                "X-RateLimit-Limit",
+                "X-RateLimit-Remaining",
+                "X-RateLimit-Reset",
+                "Retry-After"
+        ));
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+}

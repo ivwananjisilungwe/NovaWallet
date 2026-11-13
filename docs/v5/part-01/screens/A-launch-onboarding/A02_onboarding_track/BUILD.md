@@ -1,0 +1,59 @@
+# A02 · Onboarding 1 – Track
+
+**Flow:** Launch & onboarding  
+**Route:** `/onboarding?page=0`  
+**Design files:** `light.png`, `dark.png` (3×, 1170 × 2532) and `light.svg`, `dark.svg` in this folder.
+
+| Light | Dark |
+|---|---|
+| ![light](light.png) | ![dark](dark.png) |
+
+## Purpose
+Explains the main promise: one picture of all your money.
+
+## Layout (top to bottom, 390 × 844 canvas, 20 side padding)
+1. “Skip” top-right 15/600 text2.
+2. Illustration `onboarding_track` 360 wide from y 104.
+3. Dots: active is a 32×8 primary pill, inactive 8×8 surface3.
+4. H1 30/800 “See where every kwacha goes”, body 15.5 text2.
+5. Bottom-left “1 of 3” 14 text3; bottom-right 64 circle primary button with forward arrow.
+
+## Components used (see ../../../docs/COMPONENTS.md)
+- NwIllustration
+- Page dots
+- Round 64 next button (primary)
+- NwBottomCta on last page
+
+## States and behaviour
+- Swipe left/right between pages; the dots follow the swipe.
+- “Skip” jumps to A05 Welcome and saves the onboarding flag.
+
+## Navigation
+| When | Go to |
+|---|---|
+| Next / swipe | A03 |
+| Skip | A05 Welcome |
+
+## Data and backend
+- None (static). Save `onboarding_seen=true` locally.
+
+## Rules and notes
+- Use a PageView so all three pages share one screen widget; only text, illustration and dot index change.
+
+## Done when
+- Matches `light.png` and `dark.png` side by side at 390 × 844 (spacing within 2 px, same colours from theme tokens).
+- Works at text scale 1.3× without clipping, and on a 360-wide Android phone.
+- Every state listed above can be reached (use a debug menu or fake repository).
+- TalkBack reads every button and field with a clear label.
+- No hard-coded colours, strings (all in ARB files) or limits.
+
+## Prompt to give opencode (paste as is)
+```text
+Build screen A02 "Onboarding 1 – Track" for the NovaWallet Flutter app (route /onboarding?page=0).
+Read docs/COMPONENTS.md and this file (screens/.../A02_onboarding_track/BUILD.md) first, and open light.png and dark.png to match the design exactly.
+Use only the shared components from lib/core/ui and colours from the theme extension; if a component is missing, build it in lib/core/ui first.
+Put the screen in the feature folder for "Launch & onboarding" following the existing architecture (presentation / application / data layers, Riverpod for state, go_router for navigation).
+Implement every state listed under "States and behaviour", the navigation table, and the data calls listed under "Data and backend" through a repository interface with a fake implementation for now if the endpoint is marked NEW.
+Add all text to the ARB localisation files. Add a widget test that pumps the screen in light and dark and a golden test for each.
+Do not change other screens. When finished, list the files you created or changed and anything you could not complete.
+```

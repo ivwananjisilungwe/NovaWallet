@@ -1,0 +1,59 @@
+# API CI — runs from the monorepo root (active once the git root moves here, DEC-24 option A).
+# Until then, novawallet-api/.github/workflows/ci.yml remains the live pipeline.
+# No deploy steps here; deployment is OPS-03.
+name: API CI
+
+on:
+  push:
+    paths:
+      - "novawallet-api/**"
+      - ".github/workflows/api-ci.yml"
+  pull_request:
+    paths:
+      - "novawallet-api/**"
+      - ".github/workflows/api-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (JDK 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: novawallet-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: novawallet-api/pom.xml
+
+      - name: Secret scan (high-confidence patterns)
+        run: |
+          if grep -RIlE 'BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY|AKIA[0-9A-Z]{16}|https?://[^[:space:]]+:[^[:space:]]+@' --exclude-dir=target --exclude-dir=.git . ; then
+            echo "Potential secret detected; failing build."
+            exit 1
+          fi
+
+      - name: Test
+        run: ./mvnw -B clean test
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: novawallet-api/target/surefire-reports/
+          retention-days: 7
+          if-no-files-found: ignore

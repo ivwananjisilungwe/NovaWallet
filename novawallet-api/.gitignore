@@ -1,0 +1,93 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+.idea
+*.iws
+*.iml
+*.ipr
+
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+.omo/
+.opencode/
+# Maven Wrapper: track only maven-wrapper.properties
+.mvn/*
+!.mvn/wrapper/
+.mvn/wrapper/*
+!.mvn/wrapper/maven-wrapper.properties
+docs/springboot-tutorial/
+uploads/
+**/uploads/
+session-ses_*.md
+*.bak
+.vscode/
+
+# Environment and local credentials
+.env
+.env.*
+!.env.example
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.p8
+*.crt
+*.cer
+*.der
+
+# Runtime logs
+logs/
+*.log
+*.log.*
+*.log.gz
+
+# Local database data and dumps
+postgres-data/
+**/postgres-data/
+*.dump
+*.backup
+*.sql.gz
+pg_dump*
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Additional tooling state
+.serena/
+.claude/
+.playwright-mcp/
+.codegraph/
+graphify-out/
+.planning/
+
+# Temporary editor files
+*.swp
+*.orig
+*.rej
+
+# Archives and generated reports
+docs/*.zip
+/report/

@@ -1,0 +1,393 @@
+package com.novawallet.novawallet_api.transaction.service;
+
+import com.novawallet.novawallet_api.audit.service.AuditService;
+import com.novawallet.novawallet_api.auth.service.AuthService;
+import com.novawallet.novawallet_api.exception.BadRequestException;
+import com.novawallet.novawallet_api.exception.ForbiddenException;
+import com.novawallet.novawallet_api.exception.ResourceNotFoundException;
+import com.novawallet.novawallet_api.exception.ServiceUnavailableException;
+import com.novawallet.novawallet_api.fee.enums.FeeType;
+import com.novawallet.novawallet_api.fee.service.FeeEngineService;
+import com.novawallet.novawallet_api.notification.entity.NotificationChannel;
+import com.novawallet.novawallet_api.notification.entity.NotificationType;
+import com.novawallet.novawallet_api.notification.service.NotificationService;
+import com.novawallet.novawallet_api.security.EmailVerificationPolicy;
+import com.novawallet.novawallet_api.transaction.dto.DepositRequest;
+import com.novawallet.novawallet_api.transaction.dto.TransactionResponse;
+import com.novawallet.novawallet_api.transaction.dto.TransferRequest;
+import com.novawallet.novawallet_api.transaction.dto.WithdrawRequest;
+import com.novawallet.novawallet_api.transaction.entity.Transaction;
+import com.novawallet.novawallet_api.transaction.enums.TransactionStatus;
+import com.novawallet.novawallet_api.transaction.enums.TransactionType;
+import com.novawallet.novawallet_api.transaction.repository.TransactionRepository;
+import com.novawallet.novawallet_api.transaction.service.TransactionLimitService;
+import com.novawallet.novawallet_api.user.entity.User;
+import com.novawallet.novawallet_api.user.repository.UserRepository;
+import com.novawallet.novawallet_api.wallet.entity.Wallet;
+import com.novawallet.novawallet_api.wallet.entity.WalletStatus;
+import com.novawallet.novawallet_api.wallet.repository.WalletRepository;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+/**
+ * Core service for all financial operations: deposits, withdrawals, and transfers.
+ *
+ * <p>All money-mutating methods are {@code @Transactional} and use pessimistic
+ * locking ({@code SELECT ... FOR UPDATE}) to prevent race conditions. Balance
+ * changes use atomic SQL updates with a {@code WHERE balance + ? >= 0} guard.
+ * Money-out flows (withdrawals, transfers) pass through two limit layers:
+ * per-user velocity limits (rolling-hour outgoing count and amount caps,
+ * enforced before PIN verification) followed by the KYC tier daily-send-limit;
+ * deposits are gated by the KYC tier wallet limit. Notifications are fired
+ * asynchronously after each operation.</p>
+ */
+@Service
+@Transactional
+public class TransactionService {
+
+    private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
+
+    private final WalletRepository walletRepository;
+    private final TransactionRepository transactionRepository;
+    private final TransactionReferenceGenerator referenceGenerator;
+    private final AuthService authService;
+    private final FeeEngineService feeEngineService;
+    private final AuditService auditService;
+    private final UserRepository userRepository;
+    private final TransactionLimitService transactionLimitService;
+    private final NotificationService notificationService;
+    private final EmailVerificationPolicy emailVerificationPolicy;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    public TransactionService(
+            WalletRepository walletRepository,
+            TransactionRepository transactionRepository,
+            TransactionReferenceGenerator referenceGenerator,
+            AuthService authService,
+            FeeEngineService feeEngineService,
+            AuditService auditService,
+            UserRepository userRepository,
+            TransactionLimitService transactionLimitService,
+            NotificationService notificationService,
+            EmailVerificationPolicy emailVerificationPolicy
+    ) {
+        this.walletRepository = walletRepository;
+        this.transactionRepository = transactionRepository;
+        this.referenceGenerator = referenceGenerator;
+        this.authService = authService;
+        this.feeEngineService = feeEngineService;
+        this.auditService = auditService;
+        this.userRepository = userRepository;
+        this.transactionLimitService = transactionLimitService;
+        this.notificationService = notificationService;
+        this.emailVerificationPolicy = emailVerificationPolicy;
+    }
+
+    @CacheEvict(value = "walletBalances", key = "#walletId")
+    public TransactionResponse deposit(UUID walletId, DepositRequest request, UUID userId) {
+        // Preserve wallet ownership/active-state checks, then reject. Direct
+        // client-initiated deposits are disabled until a verified collection
+        // workflow exists; no balance or transaction record is created.
+        findActiveWalletWithLock(walletId, userId);
+        throw new ServiceUnavailableException(
+                "Direct wallet deposits are unavailable until verified payment collection is implemented");
+    }
+
+    @CacheEvict(value = "walletBalances", key = "#walletId")
+    public TransactionResponse withdraw(UUID walletId, WithdrawRequest request, UUID userId) {
+        Wallet wallet = findActiveWalletWithLock(walletId, userId);
+
+        emailVerificationPolicy.requireVerifiedForMoneyMovement(userId);
+
+        BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
+
+        // Enforce velocity limits (hourly outgoing count + amount) before PIN verification
+        transactionLimitService.enforceVelocityLimits(userId, amount);
+
+        authService.verifyPin(userId, request.pin());
+
+        // Enforce KYC daily-send-limit for outgoing transactions
+        transactionLimitService.enforceDailySendLimit(userId, walletId, amount);
+
+        // Calculate fee
+        BigDecimal fee = feeEngineService.calculateFee(FeeType.WITHDRAWAL, amount);
+        BigDecimal totalDebit = amount.add(fee);
+
+        BigDecimal balanceBefore = wallet.getBalance();
+
+        // Single atomic debit for amount + fee
+        int updated = walletRepository.updateBalance(walletId, totalDebit.negate());
+        if (updated == 0) {
+            throw new BadRequestException("Insufficient balance (including fee of " + fee + ")");
+        }
+
+        wallet = walletRepository.findById(walletId)
+                .orElseThrow(() -> new IllegalStateException("Wallet disappeared after withdrawal"));
+
+        BigDecimal balanceAfter = wallet.getBalance();
+
+        // WITHDRAWAL shows balance before/after the amount deduction (fee excluded)
+        BigDecimal balanceAfterWithoutFee = balanceBefore.subtract(amount);
+        Transaction withdrawTx = Transaction.builder()
+                .reference(referenceGenerator.generate())
+                .type(TransactionType.WITHDRAWAL)
+                .amount(amount)
+                .balanceBefore(balanceBefore)
+                .balanceAfter(balanceAfterWithoutFee)
+                .status(TransactionStatus.SUCCESSFUL)
+                .description(request.description())
+                .senderWalletId(walletId)
+                .build();
+        withdrawTx = transactionRepository.save(withdrawTx);
+
+        // FEE transaction shows the fee impact
+        if (fee.compareTo(BigDecimal.ZERO) > 0) {
+            Transaction feeTx = Transaction.builder()
+                    .reference(referenceGenerator.generate())
+                    .type(TransactionType.FEE)
+                    .amount(fee)
+                    .balanceBefore(balanceAfterWithoutFee)
+                    .balanceAfter(balanceAfter)
+                    .status(TransactionStatus.SUCCESSFUL)
+                    .description("Fee for withdrawal " + withdrawTx.getReference())
+                    .senderWalletId(walletId)
+                    .relatedTransactionId(withdrawTx.getId())
+                    .build();
+            transactionRepository.save(feeTx);
+        }
+
+        log.info("Withdrawal: wallet={}, amount={}, fee={}, reference={}, balance={}→{}",
+                walletId, amount, fee, withdrawTx.getReference(), balanceBefore, balanceAfter);
+
+        auditService.recordAction("Wallet", walletId, "WITHDRAWAL",
+                balanceBefore.toString(), balanceAfter.toString(), userId);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        notificationService.sendBoth(
+                userId, user.getEmail(), null,
+                NotificationType.TRANSACTION_WITHDRAWAL,
+                "Withdrawal Confirmed",
+                "Your withdrawal of K" + amount + " has been processed. "
+                        + "Fee: K" + fee + ". Reference: " + withdrawTx.getReference(),
+                "Withdrawal: K" + amount + " (fee: K" + fee + "). Ref: " + withdrawTx.getReference()
+        );
+
+        return TransactionResponse.from(withdrawTx);
+    }
+
+    @CacheEvict(value = "walletBalances", allEntries = true)
+    public TransactionResponse transfer(TransferRequest request, UUID userId) {
+        // Find sender wallet with pessimistic lock
+        Wallet senderWallet = walletRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found for user"));
+
+        if (senderWallet.getStatus() != WalletStatus.ACTIVE) {
+            throw new BadRequestException("Sender wallet is not active");
+        }
+
+        UUID receiverWalletId = request.receiverWalletId();
+
+        if (senderWallet.getId().equals(receiverWalletId)) {
+            throw new BadRequestException("Cannot transfer to your own wallet");
+        }
+
+        // Detach the unlocked sender entity so the pessimistic locks below load
+        // fresh rows (avoids stale-version conflicts under concurrency).
+        if (entityManager != null) {
+            entityManager.detach(senderWallet);
+        }
+
+        // Acquire pessimistic locks in a canonical UUID order, independent of
+        // transfer direction. Locking the lower UUID first and then the higher
+        // UUID prevents opposite-direction transfers from deadlocking.
+        UUID senderWalletId = senderWallet.getId();
+        UUID firstLockId = senderWalletId.compareTo(receiverWalletId) < 0
+                ? senderWalletId : receiverWalletId;
+        UUID secondLockId = senderWalletId.compareTo(receiverWalletId) < 0
+                ? receiverWalletId : senderWalletId;
+
+        Wallet firstLockedWallet = walletRepository.findByIdWithLock(firstLockId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        firstLockId.equals(senderWalletId) ? "Sender wallet not found" : "Receiver wallet not found"));
+        Wallet secondLockedWallet = walletRepository.findByIdWithLock(secondLockId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        secondLockId.equals(senderWalletId) ? "Sender wallet not found" : "Receiver wallet not found"));
+
+        Wallet lockedSenderWallet = firstLockedWallet.getId().equals(senderWalletId)
+                ? firstLockedWallet : secondLockedWallet;
+        Wallet lockedReceiverWallet = firstLockedWallet.getId().equals(receiverWalletId)
+                ? firstLockedWallet : secondLockedWallet;
+
+        senderWallet = lockedSenderWallet;
+        Wallet receiverWallet = lockedReceiverWallet;
+
+        if (senderWallet.getStatus() != WalletStatus.ACTIVE) {
+            throw new BadRequestException("Sender wallet is not active");
+        }
+
+        if (receiverWallet.getStatus() != WalletStatus.ACTIVE) {
+            throw new BadRequestException("Receiver wallet is not active");
+        }
+
+        emailVerificationPolicy.requireVerifiedForMoneyMovement(userId);
+
+        BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_EVEN);
+
+        // Enforce velocity limits (hourly outgoing count + amount) before PIN verification
+        transactionLimitService.enforceVelocityLimits(userId, amount);
+
+        authService.verifyPin(userId, request.pin());
+
+        // Enforce KYC daily-send-limit for outgoing transfers
+        transactionLimitService.enforceDailySendLimit(userId, senderWallet.getId(), amount);
+
+        // Calculate fee
+        BigDecimal fee = feeEngineService.calculateFee(FeeType.TRANSFER, amount);
+        BigDecimal totalSenderDebit = amount.add(fee);
+
+        BigDecimal senderBalanceBefore = senderWallet.getBalance();
+
+        // Single atomic debit for amount + fee
+        int updated = walletRepository.updateBalance(senderWallet.getId(), totalSenderDebit.negate());
+        if (updated == 0) {
+            throw new BadRequestException("Insufficient balance (amount + fee = " + totalSenderDebit + ")");
+        }
+
+        // Credit receiver for amount only
+        BigDecimal receiverBalanceBefore = receiverWallet.getBalance();
+        int receiverUpdated = walletRepository.updateBalance(receiverWalletId, amount);
+        if (receiverUpdated == 0) {
+            throw new IllegalStateException(
+                    "Failed to credit receiver wallet " + receiverWalletId + " — it may have been removed");
+        }
+
+        // Re-read updated balances
+        senderWallet = walletRepository.findById(senderWallet.getId())
+                .orElseThrow(() -> new IllegalStateException("Sender wallet disappeared"));
+        receiverWallet = walletRepository.findById(receiverWalletId)
+                .orElseThrow(() -> new IllegalStateException("Receiver wallet disappeared"));
+
+        String reference = referenceGenerator.generate();
+
+        // TRANSFER_DEBIT shows balance before/after the amount only (fee excluded)
+        BigDecimal senderBalanceAfterDebit = senderBalanceBefore.subtract(amount);
+        Transaction debitTx = Transaction.builder()
+                .reference(reference)
+                .type(TransactionType.TRANSFER_DEBIT)
+                .amount(amount)
+                .balanceBefore(senderBalanceBefore)
+                .balanceAfter(senderBalanceAfterDebit)
+                .status(TransactionStatus.SUCCESSFUL)
+                .description(request.description())
+                .senderWalletId(senderWallet.getId())
+                .receiverWalletId(receiverWalletId)
+                .build();
+        debitTx = transactionRepository.save(debitTx);
+
+        // TRANSFER_CREDIT (receiver side)
+        Transaction creditTx = Transaction.builder()
+                .reference(referenceGenerator.generate())
+                .type(TransactionType.TRANSFER_CREDIT)
+                .amount(amount)
+                .balanceBefore(receiverBalanceBefore)
+                .balanceAfter(receiverWallet.getBalance())
+                .status(TransactionStatus.SUCCESSFUL)
+                .description(request.description())
+                .senderWalletId(senderWallet.getId())
+                .receiverWalletId(receiverWalletId)
+                .relatedTransactionId(debitTx.getId())
+                .build();
+        creditTx = transactionRepository.save(creditTx);
+
+        debitTx.setRelatedTransactionId(creditTx.getId());
+        transactionRepository.save(debitTx);
+
+        // FEE transaction if fee > 0
+        if (fee.compareTo(BigDecimal.ZERO) > 0) {
+            Transaction feeTx = Transaction.builder()
+                    .reference(referenceGenerator.generate())
+                    .type(TransactionType.FEE)
+                    .amount(fee)
+                    .balanceBefore(senderBalanceAfterDebit)
+                    .balanceAfter(senderWallet.getBalance())
+                    .status(TransactionStatus.SUCCESSFUL)
+                    .description("Fee for transfer " + debitTx.getReference())
+                    .senderWalletId(senderWallet.getId())
+                    .relatedTransactionId(debitTx.getId())
+                    .build();
+            transactionRepository.save(feeTx);
+        }
+
+        log.info("Transfer: sender={}, receiver={}, amount={}, fee={}, debitRef={}, creditRef={}",
+                senderWallet.getId(), receiverWalletId, amount, fee,
+                debitTx.getReference(), creditTx.getReference());
+
+        auditService.recordAction("Wallet", senderWallet.getId(), "TRANSFER_DEBIT",
+                senderBalanceBefore.toString(), senderWallet.getBalance().toString(), userId);
+
+        auditService.recordAction("Wallet", receiverWalletId, "TRANSFER_CREDIT",
+                receiverBalanceBefore.toString(), receiverWallet.getBalance().toString(), userId);
+
+        User sender = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User receiver = receiverWallet.getUserId() != null
+                ? userRepository.findById(receiverWallet.getUserId()).orElse(null) : null;
+
+        notificationService.sendBoth(
+                userId, sender.getEmail(), null,
+                NotificationType.TRANSACTION_TRANSFER_SENT,
+                "Transfer Sent",
+                "You sent K" + amount + " to wallet " + receiverWalletId + ". "
+                        + "Fee: K" + fee + ". Reference: " + debitTx.getReference(),
+                "Transfer sent: K" + amount + ". Ref: " + debitTx.getReference()
+        );
+
+        if (receiver != null && receiver.getEmail() != null) {
+            notificationService.sendBoth(
+                    receiver.getId(), receiver.getEmail(), null,
+                    NotificationType.TRANSACTION_TRANSFER_RECEIVED,
+                    "Transfer Received",
+                    "You received K" + amount + " from wallet " + senderWallet.getId()
+                            + ". Reference: " + creditTx.getReference(),
+                    "Transfer received: K" + amount + ". Ref: " + creditTx.getReference()
+            );
+        }
+
+        return TransactionResponse.from(debitTx);
+    }
+
+    // ==================== Private helpers ====================
+
+    /**
+     * Finds a wallet with PESSIMISTIC_WRITE lock and validates ownership + active status.
+     * The lock prevents concurrent balance modifications (overdraft race conditions).
+     */
+    private Wallet findActiveWalletWithLock(UUID walletId, UUID userId) {
+        Wallet wallet = walletRepository.findByIdWithLock(walletId)
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found"));
+
+        if (!wallet.getUserId().equals(userId)) {
+            throw new ForbiddenException("Wallet does not belong to the authenticated user");
+        }
+
+        if (wallet.getStatus() != WalletStatus.ACTIVE) {
+            throw new BadRequestException("Wallet is not active");
+        }
+
+        return wallet;
+    }
+}

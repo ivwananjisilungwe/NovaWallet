@@ -1,0 +1,73 @@
+# =============================================================================
+# NovaWallet API — Docker build context exclusions
+# =============================================================================
+
+# Build artifacts (rebuilt inside the container)
+target/
+*.jar
+*.class
+*.war
+*.ear
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git metadata (not needed for build)
+.git/
+.gitignore
+.gitattributes
+
+# Tooling state and caches
+.omo/
+.opencode/
+.serena/
+.claude/
+.playwright-mcp/
+.codegraph/
+node_modules/
+
+# Generated knowledge graphs / planning / reports
+graphify-out/
+.planning/
+reports/
+
+# Session transcripts
+session-ses_*.md
+
+# Runtime data and user uploads (PII)
+uploads/
+
+# Logs
+*.log
+*.log.*
+
+# Local environment files (never bake secrets into the image)
+.env
+.env.*
+!.env.example
+
+# Private keys and credential stores (never part of the build context)
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.p8
+
+# Backups
+*.bak
+
+# Documentation not required for the build
+docs/
+HELP.md
