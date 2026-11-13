@@ -1,14 +1,52 @@
 # Session handoff → opencode
 
-## UPDATE 2026-11-14 (Claude Code session) — read this first
-- **BE-1C-2 is built and tested.** Steps 1–5 of "remaining steps" below are DONE: the full suite is 366 run / 0 failures / 0 errors / 0 skipped (JDK 21). `RouteSecurityEnumerationTest`, `InputBoundsIntegrationTest` and `AuthorizationGapIntegrationTest` (5/0) were added, `reports/PHASE_1C_AUTHZ_MAP.md` was written (48 routes; its 6 gaps are closed by the gap test), and SEC-13 (single ADMIN, DEC-03) is in the risk register.
-- Reports done: `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_2_REPORT.md`, `reports/opencode/BE-1C-2_REPORT.md`, traceability matrix (SEC-10 → IN PROGRESS).
-- **Decision needed (found by the Batch 4 plan, verified):** fee percentage unit. `percentage_fee` is DECIMAL(5,4), seeds 0.0100/0.0050, and `FeeEngineService` divides by 100, so seeded rates are 0.01%/0.005%, not 1%/0.5%. The min fee masks it. The owner must confirm which is intended. Also note that the BE-1C-2 CreateFee bound is ≤ 1.0000.
-- Proposed decision IDs collide: the Batch 3, 4 and 6 plans each proposed their own DEC-35..40. Renumber when recording in `docs/DECISIONS.md`.
-- **Git:** branch `feature/be-1c-2-authz` is pushed to origin. Owner rule: commit + push each finished, tested step to a feature branch, never to main.
-- **Next:** T1 independent review of BE-1C-2 (new session), then BE-1C-3. That needs owner answers to DEC-04 and DEC-11 and approval of `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_3_PLAN.md`.
-- Plan-only docs (awaiting approval): `PHASE_1C_BATCH_{3,4,6,7,8}_PLAN.md` in `novawallet-api/docs/phase-1c/`.
-- Uncommitted files NOT from that session (opencode's audit work): README.md, StartHere.md, TODO.md, HANDOFF.md, docs/PROJECT_ROADMAP.md, docs/PROJECT_STATE_AUDIT.md. Commit them yourself if you want them kept.
+## UPDATE 2026-11-14 (Claude Code session, end) — READ THIS FIRST
+
+### Git state at handoff
+- **Current local branch: `feature/be-1c-3-concurrency`**. It is fast-forwarded to `feature/be-1c-2-authz` (which includes this handoff), is local only and not pushed, and has no commits of its own yet.
+- **`feature/be-1c-2-authz` is pushed** to origin and includes this handoff commit. It holds all BE-1C-2 work. `main` is untouched.
+- Owner git rule: commit and push each finished, tested step to a per-prompt feature branch. Never commit to main; the owner merges. Commit only files you changed.
+- Uncommitted in the working tree:
+  - `novawallet-api/pom.xml`: **BE-1C-3 work in progress, untested.** Adds a `maven-surefire-plugin` config (excludes JUnit tag `postgres` by default) and a Maven profile `pgtest` (runs only the `postgres` group). Check it, finish it (below), then commit to `feature/be-1c-3-concurrency`.
+  - README.md, StartHere.md, TODO.md, root HANDOFF.md, docs/PROJECT_ROADMAP.md, docs/PROJECT_STATE_AUDIT.md: **opencode's own audit edits**, never committed by Claude. Decide yourself.
+  - `.claude/`: agent worktrees. Do not commit it.
+
+### BE-1C-2 (authorization & ownership): done, reviewed
+- Full suite **366 run / 0 failures / 0 errors / 0 skipped** (JDK 21), reproduced independently by the T1 reviewer.
+- T1 review: `reports/opencode/BE-1C-2_REVIEW.md`. Verdict **APPROVE WITH FIXES**, no blockers.
+- **T2 fixes still open** (do them on `feature/be-1c-2-authz`, run the full suite, push):
+  1. Major 1: `PUT /api/v1/admin/fees/{id}` binds the `FeeConfiguration` entity, so update has no bounds and allows a percentage > 100%. Add an `UpdateFeeRequest` DTO with the `CreateFeeRequest` constraints, plus a `minFee <= maxFee` check on create and update, plus a negative test class `AdminFeeUpdateBoundsIntegrationTest`. Also fix the FeeController Javadoc that says the estimate endpoint needs no auth.
+  2. Major 4: `InputBoundsIntegrationTest` asserts only status 400. Add `jsonPath` assertions on the error code and field, so only the intended cause can pass.
+  3. Major 3: wording fixed and committed with this handoff.
+  4. Major 2 (global `fail-on-unknown-properties`): accepted risk. The clients must send exactly the contract fields (note for APP-02/ADM-00).
+- A Haiku subagent was working on T2 items 1 and 2 in worktree `.claude/worktrees/agent-*` (see `git worktree list`). **Caution: that worktree was created from `f8ee658` (main), not from the BE-1C-2 branch**, so it lacks `InputBoundsIntegrationTest` and the other BE-1C-2 tests. Treat its output as a draft. Copy only the fee DTO/controller/service and new test changes, re-check them on `feature/be-1c-2-authz`, then remove the worktree (`git worktree remove --force <path>`; `git branch -D worktree-agent-*`).
+
+### Decisions recorded today (`docs/DECISIONS.md`, change log at the bottom)
+- DEC-04 **confirmed** (R-01/R-02/R-03 mapping), so BLK-02 is resolved. Also mirrored in the 1C log.
+- DEC-11 **`pgtest` profile** (disposable postgres:16; default suite stays H2; no Testcontainers).
+- **Owner approved the BE-1C-3 plan only.** Batches 4, 6, 7 and 8 plans are written but NOT approved. Re-verify their file:line evidence after Batch 3.
+- D-4: transfer/withdraw `Idempotency-Key` is **REQUIRED** (missing → 400), with a **request fingerprint** (mismatch → 422; migration **V17** adds `idempotency_keys.request_fingerprint`; Batch 4 moves to V18+).
+- D-2: new `FreezeReason.USER_DEACTIVATED` (VARCHAR(50), no migration). D-6: `novawallet-api/docs/architecture/financial-invariants.md`.
+- **DEC-35 OPEN: fee percentage unit.** `percentage_fee` is DECIMAL(5,4) with seeds 0.0100/0.0050, and `FeeEngineService` divides by 100, so the seeds charge 0.01% / 0.005%. The owner is undecided, so change nothing about the unit until PAY-04. (The FIN-09 single-rounding fix in Batch 3 is separate and approved.)
+- D-3 (limit for KYC-unapproved users) OPEN, so **FIN-11 is BLOCKED**.
+- The Batch 4/6/7/8 plans proposed their own DEC-35..40 / D2..D12 IDs. They are NOT registered; renumber from DEC-36.
+
+### BE-1C-3 (financial concurrency): how to continue
+Plan: `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_3_PLAN.md` (§7 steps S1–S12). S0 decisions are answered except D-3.
+1. **S1 pgtest infrastructure** (started, only `pom.xml` done). Still to create:
+   - `src/test/resources/application-pgtest.yml`: datasource from env `PGTEST_DB_URL`/`PGTEST_DB_USER`/`PGTEST_DB_PASSWORD`, `driver-class-name: org.postgresql.Driver`, Flyway on. No committed credentials.
+   - `src/test/java/.../support/PostgresTestSupport.java`: abstract, `@Tag("postgres") @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles({"dev","test","pgtest"})`. The profiles mirror `BaseAuthIntegrationTest`.
+   - `PostgresProfileSmokeTest`: asserts `SELECT version()` starts with "PostgreSQL 16" and there are no failed Flyway rows.
+   - `novawallet-api/scripts/pgtest.sh`: starts a disposable `postgres:16` on 127.0.0.1:55432 with a random password, exports the env vars, runs `./mvnw -B -Ppgtest test "$@"`, and removes the container on exit (trap). Docker works without sudo.
+   - Verify that `./mvnw -B clean test` (H2) still reports 366 and excludes the postgres group, and that `scripts/pgtest.sh -Dtest=PostgresProfileSmokeTest` passes.
+2. Then S2 (RED tests first), S3 FIN-09, S4 R-01 (user row lock, then wallet lock; `USER_DEACTIVATED`; restore never clears a fraud freeze, DEC-12), S5 NEW-FIN-01, S6 R-03 (savepoint at insert, 503 on exhaustion), S7 idempotency (required plus fingerprint, V17, PG16 fresh and upgrade check), S8 PG transfer proofs, S9 recalc WHERE precedence, S10 BLOCKED (D-3), S11 docs, S12 gate plus `reports/opencode/BE-1C-3_REPORT.md`. Update `reports/API_ENDPOINT_INVENTORY.md` for the transfer/withdraw contract change.
+3. 🔒 Then a T1 review in a fresh session.
+
+### Environment gotchas
+- `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64` (the default java 25 cannot compile release 17).
+- zsh: `cat` is aliased to batcat and prints nothing; use `command cat`. `$VAR` lists do not word-split; use arrays.
+- Only one Maven build per working tree at a time (shared `target/`). Parallel agents need their own worktree. Check the worktree base commit: it may be `main`, not your branch.
+- Never store the sudo password anywhere. The owner was advised to change it.
 
 ---
 

@@ -7,8 +7,8 @@ Order: `prompts/01_MASTER_ORDER.md`. Decisions: `docs/DECISIONS.md`. Contract: `
 | 1 | S0-01 commit batch1 & baseline | ✅ verified; **owner commit pending** | `S0-01_REPORT.md` | 316/316 tests; PG16 V1→V16 OK; recommend `git restore report/` |
 | 2 | S0-02 workspace check & root CI | ✅ done; **owner git-root move pending** | `S0-02_REPORT.md` | DEC-24 = A (monorepo); actionlint not run (blocked) |
 | 3 | S0-03 decisions & contract target | ✅ done | `S0-03_REPORT.md` | 123 endpoint rows: 27 exist, 10 ext, 5 conflict, 81 missing |
-| 4 | BE-1C-2 authorization & ownership 🔒 | ✅ built + tested; **needs T1 independent review** | `BE-1C-2_REPORT.md` | Full suite 366/0/0/0 (2026-11-14, JDK 21). Branch `feature/be-1c-2-authz` (pushed). SEC-13 recorded. Authz map `reports/PHASE_1C_AUTHZ_MAP.md` |
-| 5 | BE-1C-3 financial concurrency 🔒 | 📝 plan written, awaiting owner approval | `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_3_PLAN.md` | needs DEC-04, DEC-11 |
+| 4 | BE-1C-2 authorization & ownership 🔒 | ✅ built + tested; T1 = APPROVE WITH FIXES; **T2 fixes open** (see HANDOFF) | `BE-1C-2_REPORT.md` | Full suite 366/0/0/0 (2026-11-14, JDK 21). Branch `feature/be-1c-2-authz` (pushed). SEC-13 recorded. Authz map `reports/PHASE_1C_AUTHZ_MAP.md` |
+| 5 | BE-1C-3 financial concurrency 🔒 | 🔧 **plan APPROVED; S1 pgtest infra started** (branch `feature/be-1c-3-concurrency`, local) | `novawallet-api/docs/phase-1c/PHASE_1C_BATCH_3_PLAN.md` | DEC-04, DEC-11, D-2, D-4 decided; D-3 open → FIN-11 blocked |
 | 6 | BE-1C-4 database integrity 🔒 | 📝 plan written, awaiting owner approval | `.../PHASE_1C_BATCH_4_PLAN.md` | V17 may be taken by BE-1C-3 |
 | 7 | BE-1C-6 KYC/PII 🔒 | 📝 plan written, awaiting owner approval | `.../PHASE_1C_BATCH_6_PLAN.md` | DEC-08 BLOCKED; proposed DEC-35..40 not yet in DECISIONS.md |
 | 8 | BE-1C-7 rate limiting 🔒 | 📝 plan written, awaiting owner approval | `.../PHASE_1C_BATCH_7_PLAN.md` | DEC-09 open; trusted-proxy list blocked on infra |

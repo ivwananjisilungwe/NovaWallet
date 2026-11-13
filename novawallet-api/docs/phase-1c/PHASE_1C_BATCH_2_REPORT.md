@@ -187,7 +187,7 @@ Batch 2 commits on `feature/be-1c-2-authz`:
 - `25b4ced` — adds `endpoint/RouteSecurityEnumerationTest.java` and `endpoint/InputBoundsIntegrationTest.java`.
 - `965946e` — adds `endpoint/AuthorizationGapIntegrationTest.java`; adds plans for batches 6–8.
 
-Observation: the production source changes for F2–F8 (`config/PageRequests.java`, `config/SecurityConfig.java`, `application.yml`, `GlobalExceptionHandler`, the DTOs, `AdminKycService`, `FeeController`, the four controllers) do **not** appear as separate Batch 2 commits. `git log --stat` attributes files of that kind to the earlier monorepo import commit `6653046`. This batch did not verify that the working-tree F2–F8 changes match that commit. Independent review should diff them against `6653046`.
+**Provenance (verified by T1 review, 2026-11-14):** the F2–F8 production changes were written in the previous session and committed inside monorepo import commit `6653046`. `git diff 6653046 HEAD -- novawallet-api/src/main` is empty, so the BE-1C-2 commits (`fac6f61`..`7bc8288`) add **tests and documentation only**. Read "Applied at" in this report as "present in the code since `6653046` and proven by the tests named here". The T2 fixes from the review (admin fee update DTO) are the first production changes on this branch; see `reports/opencode/BE-1C-2_REVIEW.md`.
 
 `git status` at report time: no uncommitted changes in `novawallet-api/` except the untracked `docs/phase-1c/PHASE_1C_BATCH_3_PLAN.md`, which this batch did not create.
 
@@ -219,7 +219,7 @@ Carried from earlier batches and unchanged: DEC-04 (R-01/R-03), DEC-05, and Batc
 Batch 2 is ready for independent review (T1). Before accepting it, the reviewer should:
 
 1. Run the full suite once more including `AuthorizationGapIntegrationTest` and confirm the combined count.
-2. Diff F2–F8 source against `6653046` (Section L).
+2. ~~Diff F2–F8 source against `6653046`~~: done by T1 review (empty diff; see Section L).
 3. Decide on an end-to-end multipart check and on the global unknown-field setting (Sections F and G).
 
 Batch 3 should **not** begin until the reviewer approves this batch.
