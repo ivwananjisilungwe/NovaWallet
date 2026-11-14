@@ -1,0 +1,68 @@
+# PostgreSQL 16 test profile for @Tag("postgres") tests (DEC-11 / W0-3b).
+# Intended for disposable CI/script-provisioned databases only (fresh V1->head
+# or controlled upgrade state). Default H2 suite remains unchanged and is run
+# without this profile.
+#
+# Connection is injectable via env vars/properties (script/CI provides):
+#   PGTEST_JDBC_URL  (or SPRING_DATASOURCE_URL) full JDBC URL, e.g.
+#                    jdbc:postgresql://localhost:5432/novawallet_pgtest
+#   PGTEST_HOST      default: localhost
+#   PGTEST_PORT      default: 5432
+#   PGTEST_DB        default: novawallet_pgtest
+#   PGTEST_USER      (or SPRING_DATASOURCE_USERNAME) default: novawallet
+#   PGTEST_PASSWORD  (or SPRING_DATASOURCE_PASSWORD) default: novawallet
+#
+# Run tagged tests (default suite still excludes "postgres"):
+#   ./mvnw -Ppgtest test
+#   ./mvnw -Ppgtest test -Dgroups=postgres
+spring:
+  datasource:
+    url: ${PGTEST_JDBC_URL:jdbc:postgresql://${PGTEST_HOST:localhost}:${PGTEST_PORT:5432}/${PGTEST_DB:novawallet_pgtest}}
+    username: ${PGTEST_USER:${SPRING_DATASOURCE_USERNAME:novawallet}}
+    password: ${PGTEST_PASSWORD:${SPRING_DATASOURCE_PASSWORD:novawallet}}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # Flyway owns schema; validate ensures mappings match migrated PG schema.
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # pgtest runs are disposable/non-production; keep mail inert.
+  mail:
+    host: localhost
+    port: 3025
+
+# Test-only secrets for pgtest profile (same intent as application-test.yml).
+# These are NOT valid for any non-test environment.
+jwt:
+  secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQta2V5LWZvci1ub3Zhd2FsbGV0LWF1dG9tYXRlZC10ZXN0cy1ub3QtZm9yLXByb2R1Y3Rpb24=
+  issuer: novawallet-api-pgtest
+  audience: novawallet-client-pgtest
+  expiration: 900000
+
+app:
+  admin:
+    first-name: Admin
+    last-name: User
+    email: admin@novawallet.com
+    password: test-only-admin-password-not-for-production
+    phone: +260000000000
+  kyc:
+    upload-dir: target/test-uploads/kyc-pgtest
+  scheduler:
+    # Deterministic/disposable runs: keep schedulers off; services tested directly.
+    payout-reconciliation:
+      enabled: false
+
+logging:
+  level:
+    root: WARN
+    com.novawallet: INFO

@@ -57,3 +57,38 @@ jobs:
           path: novawallet-api/target/surefire-reports/
           retention-days: 7
           if-no-files-found: ignore
+
+  pg16:
+    name: PostgreSQL 16 verification (JDK 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: novawallet-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: novawallet-api/pom.xml
+
+      - name: Compile classes (required for Java Flyway migration V12)
+        run: ./mvnw -B -q -DskipTests test-compile
+
+      - name: Run PG16 fresh/upgrade/validate and postgres-tagged tests
+        env:
+          PG_IMAGE: postgres:16
+        run: ./scripts/pgtest.sh --mode=all
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-pg16
+          path: novawallet-api/target/surefire-reports/
+          retention-days: 7
+          if-no-files-found: ignore
